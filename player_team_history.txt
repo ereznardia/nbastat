@@ -1,0 +1,38 @@
+[
+    {
+        "playerId": 115,
+        "teamId": 14,
+        "startDate": "2014-10-01",
+        "endDate": "2018-06-30"
+    },
+    {
+        "playerId": 115,
+        "teamId": 6,
+        "startDate": "2018-10-01",
+        "endDate": "2019-09-01"
+    },
+    {
+        "playerId": 115,
+        "teamId": 29,
+        "startDate": "2019-12-03",
+        "endDate": null
+    },
+    {
+        "playerId": 115,
+        "teamId": 14,
+        "startDate": "2014-10-01",
+        "endDate": "2018-06-30"
+    },
+    {
+        "playerId": 115,
+        "teamId": 6,
+        "startDate": "2018-10-01",
+        "endDate": "2019-09-01"
+    },
+    {
+        "playerId": 115,
+        "teamId": 29,
+        "startDate": "2019-12-03",
+        "endDate": null
+    }
+]

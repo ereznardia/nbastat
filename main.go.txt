@@ -1,0 +1,300 @@
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"math"
+	"net/http"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/go-redis/redis/v8"
+	"github.com/gorilla/mux"
+)
+
+var ctx = context.Background()
+
+// Player struct to represent stats
+type Player struct {
+	Team      string    `json:"team"`
+	FirstName string    `json:"firstname"`
+	LastName  string    `json:"lastname"`
+	Points    int       `json:"points"`
+	Rebounds  int       `json:"rebounds"`
+	Assists   int       `json:"assists"`
+	Steals    int       `json:"steals"`
+	Blocks    int       `json:"blocks"`
+	Fouls     int       `json:"fouls"`
+	Turnovers int       `json:"turnovers"`
+	Minutes   float32   `json:"minutes"`
+	Playing   bool      `json:"playing"`
+	In        time.Time `json:"in"`
+	Out       time.Time `json:"out"`
+}
+
+type PlayerStats struct {
+	Team string         `json:"team"`
+	Stat map[string]int `json:"stat"`
+}
+
+// Redis Client
+var rdb *redis.Client
+
+// Set up Redis client
+func initRedis() {
+	rdb = redis.NewClient(&redis.Options{
+		Addr: "localhost:6379", // Change if Redis server is hosted elsewhere
+	})
+	_, err := rdb.Ping(ctx).Result()
+	if err != nil {
+		panic(fmt.Sprintf("Failed to connect to Redis: %v", err))
+	}
+}
+
+// Helper function to round to one decimal place
+func roundToOneDecimal(f float32) float32 {
+	return float32(math.Round(float64(f)*10) / 10)
+}
+
+// Current UTC time
+func utcTime() time.Time {
+	return time.Now().UTC()
+}
+
+// Retrieves player data from Redis
+func getPlayerData(w http.ResponseWriter, r *http.Request) (string, *Player, bool) {
+	vars := mux.Vars(r)
+	teamName := vars["teamName"]
+	first := vars["playerFirstName"]
+	last := vars["playerLastName"]
+
+	key := teamName + first + last
+
+	// Fetch player data from Redis
+	val, err := rdb.Get(ctx, key).Result()
+	if err == redis.Nil {
+		http.Error(w, "Player not found or team mismatch", http.StatusNotFound)
+		return "", nil, false
+	}
+	if err != nil {
+		http.Error(w, "Error retrieving player data from Redis", http.StatusInternalServerError)
+		return "", nil, false
+	}
+
+	var playerData Player
+	err = json.Unmarshal([]byte(val), &playerData)
+	if err != nil {
+		http.Error(w, "Error unmarshalling player data", http.StatusInternalServerError)
+		return "", nil, false
+	}
+
+	return key, &playerData, true
+}
+
+// Updates player data in Redis
+func updatePlayerData(key string, playerData *Player) {
+	data, _ := json.Marshal(playerData)
+	rdb.Set(ctx, key, data, 0).Err()
+}
+
+// Get selected stats for player
+func livePlayerStats(w http.ResponseWriter, r *http.Request) {
+	query := r.URL.Query()
+	fields := strings.Split(query.Get("fields"), ",")
+
+	if len(fields) == 0 || fields[0] == "" {
+		http.Error(w, "Fields parameter is required", http.StatusBadRequest)
+		return
+	}
+
+	_, playerData, ok := getPlayerData(w, r)
+	if !ok {
+		return
+	}
+
+	response := make(map[string]interface{})
+	for _, field := range fields {
+		switch field {
+		case "points":
+			response["points"] = playerData.Points
+		case "rebounds":
+			response["rebounds"] = playerData.Rebounds
+		case "assists":
+			response["assists"] = playerData.Assists
+		case "steals":
+			response["steals"] = playerData.Steals
+		case "blocks":
+			response["blocks"] = playerData.Blocks
+		case "fouls":
+			response["fouls"] = playerData.Fouls
+		case "turnovers":
+			response["turnovers"] = playerData.Turnovers
+		case "minutes":
+			minutes := playerData.Minutes
+			if playerData.Playing {
+				minutes += float32(utcTime().Sub(playerData.In).Minutes())
+			}
+			if minutes > 48 {
+				minutes = 48
+			}
+			response["minutes"] = roundToOneDecimal(minutes)
+		default:
+			http.Error(w, "Invalid field: "+field, http.StatusBadRequest)
+			return
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
+// Adds points to player
+func livePlayerPoints(w http.ResponseWriter, r *http.Request) {
+	scoreStr := mux.Vars(r)["score"]
+	score, err := strconv.Atoi(scoreStr)
+	if err != nil || score < 1 || score > 3 {
+		http.Error(w, "Player can score between 1 to 3 points", http.StatusBadRequest)
+		return
+	}
+
+	key, playerData, ok := getPlayerData(w, r)
+	if !ok {
+		return
+	}
+
+	playerData.Points += score
+	updatePlayerData(key, playerData)
+	w.WriteHeader(http.StatusOK)
+}
+
+// Increment specific stat for player
+func livePlayerIncrementStat(w http.ResponseWriter, r *http.Request) {
+	stat := r.URL.Query().Get("stat")
+	key, playerData, ok := getPlayerData(w, r)
+	if !ok {
+		return
+	}
+
+	switch stat {
+	case "rebounds":
+		playerData.Rebounds++
+	case "assists":
+		playerData.Assists++
+	case "steals":
+		playerData.Steals++
+	case "blocks":
+		playerData.Blocks++
+	case "fouls":
+		if playerData.Fouls >= 6 {
+			http.Error(w, "Max 6 fouls", http.StatusBadRequest)
+			return
+		}
+		playerData.Fouls++
+	case "turnovers":
+		playerData.Turnovers++
+	default:
+		http.Error(w, "Invalid stat type", http.StatusBadRequest)
+		return
+	}
+
+	updatePlayerData(key, playerData)
+	w.WriteHeader(http.StatusOK)
+}
+
+// Marks a player as on the court
+func livePlayerIn(w http.ResponseWriter, r *http.Request) {
+	key, playerData, ok := getPlayerData(w, r)
+	if !ok {
+		return
+	}
+
+	if playerData.Playing {
+		http.Error(w, "Player already in play", http.StatusBadRequest)
+		return
+	}
+
+	playerData.Playing = true
+	playerData.In = utcTime()
+
+	updatePlayerData(key, playerData)
+	w.WriteHeader(http.StatusOK)
+}
+
+// Marks a player as off the court and calculates minutes
+func livePlayerOut(w http.ResponseWriter, r *http.Request) {
+	key, playerData, ok := getPlayerData(w, r)
+	if !ok {
+		return
+	}
+
+	if !playerData.Playing {
+		http.Error(w, "Player already out of play", http.StatusBadRequest)
+		return
+	}
+
+	playerData.Out = utcTime()
+	if playerData.Out.Before(playerData.In) {
+		http.Error(w, "Out time must be after in time", http.StatusBadRequest)
+		return
+	}
+
+	duration := playerData.Out.Sub(playerData.In)
+	playerData.Minutes += float32(duration.Minutes())
+	if playerData.Minutes > 48 {
+		playerData.Minutes = 48
+	}
+	playerData.Playing = false
+
+	updatePlayerData(key, playerData)
+	w.WriteHeader(http.StatusOK)
+}
+
+func liveSetStat(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	matchId := vars["matchId"]
+
+	// Define a struct to hold the incoming JSON data
+	type StatUpdate struct {
+		PlayerID int     `json:"playerId"`
+		Stat     string  `json:"stat"`
+		Value    int     `json:"value"`
+		Minute   float32 `json:"minute"`
+	}
+
+	update := StatUpdate{
+		Value: 1,
+	}
+
+	// Decode the JSON body
+	err := json.NewDecoder(r.Body).Decode(&update)
+	if err != nil {
+		http.Error(w, "Invalid JSON: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// Example use of the parsed values
+	response := fmt.Sprintf("matchId: %s, playerId: %d, stat: %s, value: %d, minute: %f",
+		matchId, update.PlayerID, update.Stat, update.Value, update.Minute)
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(response))
+}
+
+func main() {
+	initRedis()
+	r := mux.NewRouter()
+
+	r.HandleFunc("/team/{teamName}/player/{playerFirstName}/{playerLastName}/{matchId}/stats", livePlayerStats).Methods("GET")
+	r.HandleFunc("/team/{teamName}/player/{playerFirstName}/{playerLastName}/{matchId}/points/{score}", livePlayerPoints).Methods("POST")
+	r.HandleFunc("/team/{teamName}/player/{playerFirstName}/{playerLastName}/{matchId}/increment", livePlayerIncrementStat).Methods("POST")
+	r.HandleFunc("/team/{teamName}/player/{playerFirstName}/{playerLastName}/{matchId}/in", livePlayerIn).Methods("POST")
+	r.HandleFunc("/team/{teamName}/player/{playerFirstName}/{playerLastName}/{matchId}/out", livePlayerOut).Methods("POST")
+
+	// r.HandleFunc("/live/{matchId}/init", liveInitMatch).Methods("POST")
+	r.HandleFunc("/live/{matchId}/stat", liveSetStat).Methods("POST")
+
+	fmt.Println("Server is running on port 8080...")
+	http.ListenAndServe(":8080", r)
+}
