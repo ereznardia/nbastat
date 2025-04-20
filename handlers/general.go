@@ -1,164 +1,21 @@
-package main
+package handlers
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"io"
-	"math"
 	"net/http"
-	"os"
+	"skyhawk/db"
 	"time"
 
 	"database/sql"
 	"log"
 
-	"github.com/go-redis/redis/v8"
 	"github.com/gorilla/mux"
 	_ "github.com/lib/pq"
 )
 
-var pg *sql.DB
-
-var ctx = context.Background()
-
-// Redis Client
-var rdb *redis.Client
-
-// Set up Redis client
-func connectRedis() {
-	rdb = redis.NewClient(&redis.Options{
-		Addr: "localhost:6379",
-	})
-	_, err := rdb.Ping(ctx).Result()
-	if err != nil {
-		panic(fmt.Sprintf("Failed to connect to Redis: %v", err))
-	}
-}
-
-func connectPostgres() {
-	var err error
-
-	// Read from environment variables
-	dbHost := os.Getenv("DB_HOST")
-	dbPort := os.Getenv("DB_PORT")
-	dbUser := os.Getenv("DB_USER")
-	dbPassword := os.Getenv("DB_PASSWORD")
-	dbName := os.Getenv("DB_NAME")
-
-	// Construct the connection string
-	connStr := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable", dbUser, dbPassword, dbHost, dbPort, dbName)
-
-	// Open a connection to PostgreSQL
-	pg, err = sql.Open("postgres", connStr)
-	if err != nil {
-		log.Fatal("Error opening database connection: ", err)
-	}
-
-	// Test the connection
-	err = pg.Ping()
-	if err != nil {
-		log.Fatal("Error testing database connection: ", err)
-	}
-	fmt.Println("Connected to PostgreSQL!")
-
-	// Create Tables if they don't exist
-	createTableIfNotExists("teams", `
-		CREATE TABLE teams (
-			team_id SERIAL PRIMARY KEY,  -- Auto-incrementing ID
-			team_name TEXT NOT NULL UNIQUE
-		);
-	`)
-
-	createTableIfNotExists("players", `
-			CREATE TABLE players (
-				player_id SERIAL PRIMARY KEY,  -- Auto-incrementing ID
-				first_name TEXT NOT NULL,
-				last_name TEXT NOT NULL
-			);
-		`)
-
-	createTableIfNotExists("player_team_history", `
-		CREATE TABLE player_team_history (
-			history_id SERIAL PRIMARY KEY,  -- Auto-incrementing ID
-			player_id INT REFERENCES players(player_id) ON DELETE CASCADE,
-			team_id INT REFERENCES teams(team_id) ON DELETE CASCADE,
-			start_date DATE NOT NULL,
-			end_date DATE
-		);
-	`)
-
-	_, err = pg.Exec(`
-		CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_player_team_history
-		ON player_team_history (player_id, team_id, COALESCE(end_date, DATE '9999-12-31'));
-	`)
-	if err != nil {
-		log.Fatalf("Error creating unique player-team-history index: %v", err)
-	}
-
-	createTableIfNotExists("matches", `
-			CREATE TABLE matches (
-				match_id SERIAL PRIMARY KEY,  -- Auto-incrementing ID
-				date DATE NOT NULL,
-				home_team INT REFERENCES teams(team_id) ON DELETE CASCADE,
-				away_team INT REFERENCES teams(team_id) ON DELETE CASCADE
-			);
-		`)
-
-	_, err = pg.Exec(`
-		CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_match_date
-		ON matches (date, home_team, away_team);
-	`)
-	if err != nil {
-		log.Fatalf("Error creating unique match index: %v", err)
-	}
-
-	createTableIfNotExists("matches_stats", `
-			CREATE TABLE matches_stats (
-				match_id INT REFERENCES matches(match_id) ON DELETE CASCADE,
-				player_id INT REFERENCES players(player_id) ON DELETE CASCADE,
-				stat_type TEXT NOT NULL,
-				stat_value INT NOT NULL,
-				PRIMARY KEY (match_id, player_id, stat_type)
-			);
-		`)
-
-}
-
-func createTableIfNotExists(tableName, createSQL string) {
-	var exists bool
-	err := pg.QueryRow(`
-		SELECT EXISTS (
-			SELECT 1 FROM information_schema.tables 
-			WHERE table_name = $1
-		);
-	`, tableName).Scan(&exists)
-
-	if err != nil {
-		log.Fatalf("Error checking if table exists: %v", err)
-	}
-
-	if !exists {
-		_, err := pg.Exec(createSQL)
-		if err != nil {
-			log.Fatalf("Error creating table %s: %v", tableName, err)
-		} else {
-			fmt.Printf("Table %s created successfully.\n", tableName)
-		}
-	} else {
-		fmt.Printf("Table %s already exists.\n", tableName)
-	}
-}
-
-func roundToOneDecimal(f float32) float32 {
-	return float32(math.Round(float64(f)*10) / 10)
-}
-
-func utcTime() time.Time {
-	return time.Now().UTC()
-}
-
-func deletePgTables(w http.ResponseWriter, r *http.Request) {
+func DeletePgTables(w http.ResponseWriter, r *http.Request) {
 	// List of tables you created
 	tables := []string{
 		"teams",
@@ -169,7 +26,7 @@ func deletePgTables(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Start a transaction to ensure all operations happen atomically
-	tx, err := pg.Begin()
+	tx, err := db.PG.Begin()
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Error starting transaction: %v", err), http.StatusInternalServerError)
 		return
@@ -199,7 +56,7 @@ func deletePgTables(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(response))
 }
 
-func deletePgTable(w http.ResponseWriter, r *http.Request) {
+func DeletePgTable(w http.ResponseWriter, r *http.Request) {
 	// Extract the table name from the URL parameters
 	vars := mux.Vars(r)
 	tableName := vars["tableName"]
@@ -214,7 +71,7 @@ func deletePgTable(w http.ResponseWriter, r *http.Request) {
 	sql := fmt.Sprintf("DROP TABLE IF EXISTS %s;", tableName)
 
 	// Execute the query
-	_, err := pg.Exec(sql)
+	_, err := db.PG.Exec(sql)
 	if err != nil {
 		http.Error(w, "Failed to delete table", http.StatusInternalServerError)
 		log.Printf("Error deleting table %s: %v", tableName, err)
@@ -228,9 +85,9 @@ func deletePgTable(w http.ResponseWriter, r *http.Request) {
 
 // TEAMS APIS //
 
-func getTeams(w http.ResponseWriter, r *http.Request) {
+func GetTeams(w http.ResponseWriter, r *http.Request) {
 	// Query to select all teams from the database
-	rows, err := pg.Query(`
+	rows, err := db.PG.Query(`
 		SELECT team_id, team_name FROM teams
 	`)
 
@@ -279,7 +136,7 @@ func getTeams(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func addTeams(w http.ResponseWriter, r *http.Request) {
+func AddTeams(w http.ResponseWriter, r *http.Request) {
 	var teams []map[string]string
 	err := json.NewDecoder(r.Body).Decode(&teams)
 	if err != nil {
@@ -291,7 +148,7 @@ func addTeams(w http.ResponseWriter, r *http.Request) {
 		teamName := team["teamName"]
 
 		// Insert team without specifying team_id (auto-increment will take care of it)
-		_, err := pg.Exec(`
+		_, err := db.PG.Exec(`
 			INSERT INTO teams (team_name)
 			VALUES ($1)
 		`, teamName)
@@ -309,7 +166,7 @@ func addTeams(w http.ResponseWriter, r *http.Request) {
 
 // PLAYERS APIS //
 
-func deletePlayer(w http.ResponseWriter, r *http.Request) {
+func DeletePlayer(w http.ResponseWriter, r *http.Request) {
 	type RequestBody struct {
 		PlayerID string `json:"playerId"` // The player_id field from the JSON body
 	}
@@ -336,7 +193,7 @@ func deletePlayer(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Query to delete the player from the database
-	_, err = pg.Exec(`
+	_, err = db.PG.Exec(`
 		DELETE FROM players WHERE player_id = $1`, requestData.PlayerID)
 
 	if err != nil {
@@ -353,9 +210,9 @@ func deletePlayer(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(fmt.Sprintf(`{"message": "Player %s deleted successfully"}`, requestData.PlayerID)))
 }
 
-func getPlayers(w http.ResponseWriter, r *http.Request) {
+func GetPlayers(w http.ResponseWriter, r *http.Request) {
 	// Query to select all players from the database
-	rows, err := pg.Query(`
+	rows, err := db.PG.Query(`
 		SELECT player_id, first_name, last_name FROM players
 	`)
 
@@ -405,7 +262,7 @@ func getPlayers(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func addPlayers(w http.ResponseWriter, r *http.Request) {
+func AddPlayers(w http.ResponseWriter, r *http.Request) {
 	var players []map[string]string
 	err := json.NewDecoder(r.Body).Decode(&players)
 	if err != nil {
@@ -418,7 +275,7 @@ func addPlayers(w http.ResponseWriter, r *http.Request) {
 		lastName := player["lastName"]
 
 		// Insert player without specifying player_id (auto-increment will take care of it)
-		_, err := pg.Exec(`
+		_, err := db.PG.Exec(`
 			INSERT INTO players (first_name, last_name)
 			VALUES ($1, $2)
 		`, firstName, lastName)
@@ -433,7 +290,7 @@ func addPlayers(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("Players added successfully."))
 }
 
-func getPlayerTeamHistories(w http.ResponseWriter, r *http.Request) {
+func GetPlayerTeamHistories(w http.ResponseWriter, r *http.Request) {
 	type PlayerHistory struct {
 		PlayerFullName string       `json:"playerFullName"`
 		TeamName       string       `json:"teamName"`
@@ -442,7 +299,7 @@ func getPlayerTeamHistories(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Query the database
-	rows, err := pg.Query(`
+	rows, err := db.PG.Query(`
 		SELECT CONCAT(p.first_name, ' ', p.last_name), t.team_name, pth.start_date, pth.end_date
 		FROM player_team_history pth
 		JOIN teams t ON pth.team_id = t.team_id
@@ -494,7 +351,7 @@ func getPlayerTeamHistories(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func addPlayerTeamHistories(w http.ResponseWriter, r *http.Request) {
+func AddPlayerTeamHistories(w http.ResponseWriter, r *http.Request) {
 	var playerHistory []struct {
 		PlayerID  int    `json:"playerId"`
 		TeamID    int    `json:"teamId"`
@@ -518,7 +375,7 @@ func addPlayerTeamHistories(w http.ResponseWriter, r *http.Request) {
 		}
 
 		sql := `INSERT INTO player_team_history (player_id, team_id, start_date, end_date) VALUES ($1, $2, $3, $4)`
-		_, err := pg.Exec(sql,
+		_, err := db.PG.Exec(sql,
 			history.PlayerID, history.TeamID, history.StartDate, endDate)
 
 		if err != nil {
@@ -530,9 +387,9 @@ func addPlayerTeamHistories(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-func getMatches(w http.ResponseWriter, r *http.Request) {
+func GetMatches(w http.ResponseWriter, r *http.Request) {
 	// Query to select all matches from the database
-	rows, err := pg.Query(`
+	rows, err := db.PG.Query(`
 		SELECT match_id, date, home_team, away_team FROM matches
 	`)
 
@@ -585,7 +442,7 @@ func getMatches(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func addMatches(w http.ResponseWriter, r *http.Request) {
+func AddMatches(w http.ResponseWriter, r *http.Request) {
 	var matches []map[string]string
 	err := json.NewDecoder(r.Body).Decode(&matches)
 	if err != nil {
@@ -603,7 +460,7 @@ func addMatches(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		_, err := pg.Exec(`
+		_, err := db.PG.Exec(`
 			INSERT INTO matches (date, home_team, away_team)
 			VALUES ($1,$2,$3)
 		`, date, homeTeam, awayTeam)
@@ -619,33 +476,4 @@ func addMatches(w http.ResponseWriter, r *http.Request) {
 	// Respond to client
 	w.WriteHeader(http.StatusCreated)
 	fmt.Fprint(w, "Matches added successfully")
-}
-
-func main() {
-	connectRedis()
-	connectPostgres()
-
-	defer pg.Close()
-
-	r := mux.NewRouter()
-
-	r.HandleFunc("/tables", deletePgTables).Methods("DELETE") // delete all tables -- todo: delete it
-
-	r.HandleFunc("/table/{tableName}", deletePgTable).Methods("DELETE")
-
-	r.HandleFunc("/teams", getTeams).Methods("GET")  // Get all teams
-	r.HandleFunc("/teams", addTeams).Methods("POST") // Add multiple teams
-
-	r.HandleFunc("/player", deletePlayer).Methods("DELETE") // Delete a player by ID
-	r.HandleFunc("/players", getPlayers).Methods("GET")     // Get all players
-	r.HandleFunc("/players", addPlayers).Methods("POST")    // Add multiple players
-
-	r.HandleFunc("/player_team_history", getPlayerTeamHistories).Methods("GET")  // Get player team history
-	r.HandleFunc("/player_team_history", addPlayerTeamHistories).Methods("POST") // Add player team history
-
-	r.HandleFunc("/matches", getMatches).Methods("GET")  // Get team match history
-	r.HandleFunc("/matches", addMatches).Methods("POST") // Add team match history
-
-	fmt.Println("Server is running on port 8080...")
-	http.ListenAndServe(":8080", r)
 }

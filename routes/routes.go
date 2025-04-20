@@ -1,7 +1,7 @@
 package routes
 
 import (
-	"handlers"
+	"skyhawk/handlers"
 
 	"github.com/gorilla/mux"
 )
@@ -9,11 +9,26 @@ import (
 func SetupRouter() *mux.Router {
 	r := mux.NewRouter()
 
-	// General data routes
-	r.HandleFunc("/api/teams", handlers.CreateTeam).Methods("POST")
-	r.HandleFunc("/api/players", handlers.CreatePlayer).Methods("POST")
+	// General data routes - Using Postgres for data structuring and historic data, season aggregatios, complex player stats etc
 
-	// Live match routes
+	r.HandleFunc("/api/tables", handlers.DeletePgTables).Methods("DELETE") // delete all tables -- todo: delete it
+
+	r.HandleFunc("/api/table/{tableName}", handlers.DeletePgTable).Methods("DELETE")
+
+	r.HandleFunc("/api/teams", handlers.GetTeams).Methods("GET")  // Get all teams
+	r.HandleFunc("/api/teams", handlers.AddTeams).Methods("POST") // Add multiple teams
+
+	r.HandleFunc("/api/player", handlers.DeletePlayer).Methods("DELETE") // Delete a player by ID
+	r.HandleFunc("/api/players", handlers.GetPlayers).Methods("GET")     // Get all players
+	r.HandleFunc("/api/players", handlers.AddPlayers).Methods("POST")    // Add multiple players
+
+	r.HandleFunc("/api/player_team_history", handlers.GetPlayerTeamHistories).Methods("GET")  // Get player team history
+	r.HandleFunc("/api/player_team_history", handlers.AddPlayerTeamHistories).Methods("POST") // Add player team history
+
+	r.HandleFunc("/api/matches", handlers.GetMatches).Methods("GET")  // Get team match history
+	r.HandleFunc("/api/matches", handlers.AddMatches).Methods("POST") // Add team match history
+
+	// Live match routes - Using Redis for real time performance
 	r.HandleFunc("/api/match/live-update", handlers.LiveMatchUpdate).Methods("POST")
 
 	return r
