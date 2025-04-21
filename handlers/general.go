@@ -466,7 +466,7 @@ func AddMatches(w http.ResponseWriter, r *http.Request) {
 		`, date, homeTeam, awayTeam)
 
 		if err != nil {
-			http.Error(w, fmt.Sprintf("Error adding match %s vs %s at $s: %v", homeTeam, awayTeam, date, err), http.StatusInternalServerError)
+			http.Error(w, fmt.Sprintf("Error adding match %s vs %s at $s: %v", homeTeam, awayTeam, date), http.StatusInternalServerError)
 			return
 		}
 
