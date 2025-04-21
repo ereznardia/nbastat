@@ -22,6 +22,8 @@
         v-for="team in teams"
         :key="team.team_id"
         class="team-box"
+        :class="{ highlighted: isTeamSelected(team) }"
+        @click="selectTeam(team)"
         @dragover.prevent
         @drop="onDrop(team.team_id)"
       >
@@ -31,9 +33,11 @@
             v-for="player in getPlayersForTeam(team.team_id)"
             :key="player.player_id"
             class="player-box"
+            :class="{ playerHighlighted: isPlayerSelected(player) }"
+            @click.stop="selectPlayer(player)"
           >
-          {{ player.first_name }} {{ player.last_name }} ({{ getStartDate(player.player_id, team.team_id) }})
-        </div>
+            {{ player.first_name }} {{ player.last_name }} ({{ getStartDate(player.player_id, team.team_id) }})
+          </div>
         </div>
       </div>
     </div>
@@ -65,7 +69,9 @@ export default {
       draggedPlayer: null,
       dropTeamId: null,
       showDatePicker: false,
-      selectedDate: ''
+      selectedDate: '',
+      selectedTeams: [], // Array to store selected teams
+      selectedPlayers: [] // Array to store selected players
     };
   },
   mounted() {
@@ -146,6 +152,30 @@ export default {
       this.dropTeamId = teamId;
       this.showDatePicker = true;
     },
+    selectTeam(team) {
+      // Toggle the team selection in the selectedTeams array
+      const index = this.selectedTeams.findIndex(t => t.team_id === team.team_id);
+      if (index === -1) {
+        this.selectedTeams.push(team); // If not selected, add to the array
+      } else {
+        this.selectedTeams.splice(index, 1); // If already selected, remove from the array
+      }
+    },
+    isTeamSelected(team) {
+      return this.selectedTeams.some(t => t.team_id === team.team_id); // Check if the team is in the selectedTeams array
+    },
+    selectPlayer(player) {
+      // Toggle the player selection in the selectedPlayers array
+      const index = this.selectedPlayers.findIndex(p => p.player_id === player.player_id);
+      if (index === -1) {
+        this.selectedPlayers.push(player); // If not selected, add to the array
+      } else {
+        this.selectedPlayers.splice(index, 1); // If already selected, remove from the array
+      }
+    },
+    isPlayerSelected(player) {
+      return this.selectedPlayers.some(p => p.player_id === player.player_id); // Check if the player is in the selectedPlayers array
+    },
     async confirmAssignment() {
       if (!this.selectedDate || !this.draggedPlayer || !this.dropTeamId) return;
 
@@ -225,6 +255,11 @@ export default {
   background: #f8f8f8;
   box-shadow: 0 0 6px rgba(0, 0, 0, 0.1);
   min-height: 150px;
+  cursor: pointer;
+}
+
+.team-box.highlighted {
+  background-color: #cce5ff;
 }
 
 .players-list {
@@ -236,6 +271,13 @@ export default {
   margin: 5px 0;
   padding: 5px;
   border-radius: 5px;
+  cursor: pointer;
+}
+
+.player-box.playerHighlighted {
+  background-color: #d4edda; /* Light green background for selected players */
+  border: 1px solid #28a745; /* Green border for selected players */
+  color: #155724; /* Dark green text color */
 }
 
 .modal-overlay {
