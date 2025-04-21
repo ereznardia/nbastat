@@ -3,13 +3,21 @@ services:
     image: postgres:13
     container_name: postgres_db
     environment:
-      POSTGRES_USER: erez       # Define PostgreSQL username
-      POSTGRES_PASSWORD: 1234   # Define PostgreSQL password
-      POSTGRES_DB: nbastat     # Define the database name
+      POSTGRES_USER: erez
+      POSTGRES_PASSWORD: 1234
+      POSTGRES_DB: nbastat
     ports:
-      - "5432:5432"            # Expose PostgreSQL on port 5432
+      - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    networks:
+      - app-network
+
+  redis:
+    image: redis:6
+    container_name: redis_db
+    ports:
+      - "6379:6379"
     networks:
       - app-network
 
@@ -18,14 +26,18 @@ services:
     container_name: go_app
     depends_on:
       - postgres
+      - redis
     environment:
-      DB_HOST: localhost       # Connect to 'localhost' (PostgreSQL container exposed to the host)
-      DB_PORT: 5432            # Port to connect to PostgreSQL
-      DB_USER: erez            # PostgreSQL username
-      DB_PASSWORD: 1234        # PostgreSQL password
-      DB_NAME: nbastat         # Database name
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: erez
+      DB_PASSWORD: 1234
+      DB_NAME: nbastat
+      REDIS_ADDR: redis:6379
+      REDIS_PASSWORD: ""
+      REDIS_DB: "0"
     ports:
-      - "8080:8080"            # Expose Go app on port 8080
+      - "8080:8080"
     networks:
       - app-network
 

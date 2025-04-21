@@ -84,9 +84,8 @@ func checkForTable() {
 			CREATE TABLE matches_stats (
 				match_id INT REFERENCES matches(match_id) ON DELETE CASCADE,
 				player_id INT REFERENCES players(player_id) ON DELETE CASCADE,
-				stat_type TEXT NOT NULL,
-				stat_value INT NOT NULL,
-				PRIMARY KEY (match_id, player_id, stat_type)
+				minute REAL,
+				stat TEXT NOT NULL
 			);
 		`)
 }

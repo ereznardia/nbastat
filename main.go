@@ -7,6 +7,7 @@ import (
 	"os"
 	"skyhawk/db"
 	"skyhawk/routes"
+	"strconv"
 )
 
 func main() {
@@ -17,8 +18,20 @@ func main() {
 	dbPassword := os.Getenv("DB_PASSWORD")
 	dbName := os.Getenv("DB_NAME")
 
+	redisAddr := os.Getenv("REDIS_ADDR")
+	redisPassword := os.Getenv("REDIS_PASSWORD")
+	redisDBStr := os.Getenv("REDIS_DB")
+
+	if redisDBStr == "" {
+		redisDBStr = "0"
+	}
+	redisDB, err := strconv.Atoi(redisDBStr)
+	if err != nil {
+		log.Fatalf("Invalid REDIS_DB value: %v", err)
+	}
+
 	db.InitPostgres(fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable", dbUser, dbPassword, dbHost, dbPort, dbName))
-	db.InitRedis("localhost:6379", "", 0)
+	db.InitRedis(redisAddr, redisPassword, redisDB)
 
 	r := routes.SetupRouter()
 	log.Println("Server started at :8080")

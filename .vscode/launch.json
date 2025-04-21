@@ -12,7 +12,10 @@
                 "DB_PORT": "5432",
                 "DB_USER": "erez",
                 "DB_PASSWORD": "1234",
-                "DB_NAME": "nbastat"
+                "DB_NAME": "nbastat",
+                "REDIS_ADDR": "localhost:6379",
+                "REDIS_PASSWORD": "",
+                "REDIS_DB": "0"
             }
         }
     ]

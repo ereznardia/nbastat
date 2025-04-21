@@ -29,7 +29,8 @@ func SetupRouter() *mux.Router {
 	r.HandleFunc("/api/matches", handlers.AddMatches).Methods("POST") // Add team match history
 
 	// Live match routes - Using Redis for real time performance
-	r.HandleFunc("/api/match/live-update", handlers.LiveMatchUpdate).Methods("POST")
+	r.HandleFunc("/api/match_stat", handlers.AddMatchStat).Methods("POST")
+	r.HandleFunc("/api/match_stat/{matchId}/{playerId}", handlers.GetPlayerMatchStat).Methods("GET")
 
 	return r
 }
