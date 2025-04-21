@@ -11,7 +11,7 @@ import (
 )
 
 func main() {
-	// Read from environment variables
+	// Env vars
 	dbHost := os.Getenv("DB_HOST")
 	dbPort := os.Getenv("DB_PORT")
 	dbUser := os.Getenv("DB_USER")
@@ -34,6 +34,14 @@ func main() {
 	db.InitRedis(redisAddr, redisPassword, redisDB)
 
 	r := routes.SetupRouter()
+
+	//
+	fs := http.FileServer(http.Dir("./frontend/dist"))
+	http.Handle("/", http.StripPrefix("/", fs))
+
+	http.Handle("/api/", r)
+
+	// Start the server
 	log.Println("Server started at :8080")
-	log.Fatal(http.ListenAndServe(":8080", r))
+	log.Fatal(http.ListenAndServe(":8080", nil))
 }

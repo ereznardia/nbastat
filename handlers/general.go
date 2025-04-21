@@ -294,13 +294,14 @@ func GetPlayerTeamHistories(w http.ResponseWriter, r *http.Request) {
 	type PlayerHistory struct {
 		PlayerFullName string       `json:"playerFullName"`
 		TeamName       string       `json:"teamName"`
+		TeamID         int          `json:"teamId"`
 		StartDate      string       `json:"startDate"`
 		EndDate        sql.NullTime `json:"endDate"`
 	}
 
 	// Query the database
 	rows, err := db.PG.Query(`
-		SELECT CONCAT(p.first_name, ' ', p.last_name), t.team_name, pth.start_date, pth.end_date
+		SELECT CONCAT(p.first_name, ' ', p.last_name), t.team_id, t.team_name, pth.start_date, pth.end_date
 		FROM player_team_history pth
 		JOIN teams t ON pth.team_id = t.team_id
 		JOIN players p ON pth.player_id = p.player_id
@@ -320,7 +321,7 @@ func GetPlayerTeamHistories(w http.ResponseWriter, r *http.Request) {
 		var history PlayerHistory
 
 		// Scan the data into the history struct
-		if err := rows.Scan(&history.PlayerFullName, &history.TeamName, &history.StartDate, &history.EndDate); err != nil {
+		if err := rows.Scan(&history.PlayerFullName, &history.TeamID, &history.TeamName, &history.StartDate, &history.EndDate); err != nil {
 			http.Error(w, "Failed to scan row", http.StatusInternalServerError)
 			log.Printf("Error scanning row: %v", err)
 			return
