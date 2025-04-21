@@ -1,5 +1,5 @@
 <template>
-  <div id="app">
+  <div id="app" @keydown.enter="createMatch" tabindex="0">
     <!-- Unassigned Players Section -->
     <div class="unassigned-players">
       <h2>Players Without a Team</h2>
@@ -153,7 +153,6 @@ export default {
       this.showDatePicker = true;
     },
     selectTeam(team) {
-      // Toggle the team selection in the selectedTeams array
       const index = this.selectedTeams.findIndex(t => t.team_id === team.team_id);
       if (index === -1) {
         this.selectedTeams.push(team); // If not selected, add to the array
@@ -162,19 +161,18 @@ export default {
       }
     },
     isTeamSelected(team) {
-      return this.selectedTeams.some(t => t.team_id === team.team_id); // Check if the team is in the selectedTeams array
+      return this.selectedTeams.some(t => t.team_id === team.team_id);
     },
     selectPlayer(player) {
-      // Toggle the player selection in the selectedPlayers array
       const index = this.selectedPlayers.findIndex(p => p.player_id === player.player_id);
       if (index === -1) {
-        this.selectedPlayers.push(player); // If not selected, add to the array
+        this.selectedPlayers.push(player);
       } else {
-        this.selectedPlayers.splice(index, 1); // If already selected, remove from the array
+        this.selectedPlayers.splice(index, 1);
       }
     },
     isPlayerSelected(player) {
-      return this.selectedPlayers.some(p => p.player_id === player.player_id); // Check if the player is in the selectedPlayers array
+      return this.selectedPlayers.some(p => p.player_id === player.player_id);
     },
     async confirmAssignment() {
       if (!this.selectedDate || !this.draggedPlayer || !this.dropTeamId) return;
@@ -202,10 +200,40 @@ export default {
       this.draggedPlayer = null;
       this.dropTeamId = null;
       this.selectedDate = '';
+    },
+    async createMatch() {
+      if (this.selectedTeams.length === 2) {
+        if (!this.selectedDate) {
+          // Show the date picker if no date is selected yet
+          this.showDatePicker = true;
+          return; // Prevent creating match until date is selected
+        }
+
+        const homeTeam = this.selectedTeams[0];
+        const awayTeam = this.selectedTeams[1];
+
+        const payload = {
+          home_team_id: homeTeam.team_id,
+          away_team_id: awayTeam.team_id,
+          match_date: this.selectedDate
+        };
+
+        try {
+          // Send the match creation request
+          await axios.post('http://localhost:8080/api/matches', payload);
+          alert('Match created successfully!');
+          this.selectedTeams = []; // Clear selected teams after match creation
+        } catch (error) {
+          console.error('Error creating match:', error);
+        }
+      } else {
+        alert('Please select exactly two teams and choose a date!');
+      }
     }
   }
 };
 </script>
+
 
 <style scoped>
 #app {
