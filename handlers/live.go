@@ -411,7 +411,7 @@ func GetPlayerMatchStat(w http.ResponseWriter, r *http.Request) {
 
 	// Special case: calculate minutes based on "in" and "out" events
 	if requestedStats["minutes"] {
-		var inTimes []string
+		var inTime string
 		var totalMinutes string
 
 		for i, entry := range parsedStats {
@@ -420,22 +420,17 @@ func GetPlayerMatchStat(w http.ResponseWriter, r *http.Request) {
 
 			switch stat {
 			case "in":
-				inTimes = append(inTimes, minuteStr)
+				inTime = minuteStr
 			case "out":
-				if len(inTimes) > 0 {
-					lastIn := inTimes[len(inTimes)-1]
-					inTimes = inTimes[:len(inTimes)-1] // pop
-					totalMinutes = minutesAdd(totalMinutes, minuteDiff(lastIn, minuteStr))
+				if inTime != "" {
+					totalMinutes = minutesAdd(totalMinutes, minuteDiff(inTime, minuteStr))
+					inTime = "" // clear after use
 				}
 			}
 
-			// final check.. there will be no more iterations, and we have "ongoing" player, so we
-			// will use the last stat's recorded minutes as the current "out"
-			if i == len(parsedStats)-1 && len(inTimes) > 0 {
-				lastMinute := minuteStr
-				for _, pendingIn := range inTimes {
-					totalMinutes = minutesAdd(totalMinutes, minuteDiff(pendingIn, lastMinute))
-				}
+			// Final check for player still "in"
+			if i == len(parsedStats)-1 && inTime != "" {
+				totalMinutes = minutesAdd(totalMinutes, minuteDiff(inTime, lastMatchRecordedMinute(matchID)))
 			}
 		}
 
@@ -444,6 +439,41 @@ func GetPlayerMatchStat(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(statSums)
+}
+
+func lastMatchRecordedMinute(matchID int) string {
+	pattern := fmt.Sprintf("match:%d:player:*:stats", matchID)
+	keys, err := db.Redis.Keys(db.Ctx, pattern).Result()
+	if err != nil || len(keys) == 0 {
+		return "0" // fallback default
+	}
+
+	var maxMinute float64 = 0
+
+	for _, key := range keys {
+		// Get the last stat from the player's list
+		lastEntry, err := db.Redis.LRange(db.Ctx, key, -1, -1).Result()
+		if err != nil || len(lastEntry) == 0 {
+			continue
+		}
+
+		var record map[string]string
+		if err := json.Unmarshal([]byte(lastEntry[0]), &record); err != nil {
+			continue
+		}
+
+		minStr := record["minute"]
+		minVal, err := strconv.ParseFloat(minStr, 64)
+		if err != nil {
+			continue
+		}
+
+		if minVal > maxMinute {
+			maxMinute = minVal
+		}
+	}
+
+	return fmt.Sprintf("%.2f", maxMinute)
 }
 
 func parseRequestedStats(query string) (map[string]bool, error) {

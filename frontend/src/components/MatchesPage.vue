@@ -75,8 +75,28 @@
           <option v-for="(stat, index) in statTypes" :key="index" :value="stat">{{ stat }}</option>
         </select>
 
-        <label for="minute">Minute (mm.ss):</label>
-        <input type="text" id="minute" v-model="minute" placeholder="MM.SS" />
+        <!-- <label for="minute">Minute (mm.ss):</label>
+        <input type="text" id="minute" v-model="minute" placeholder="MM.SS" /> -->
+
+        <label for="minute">Minute:</label>
+        <input
+          type="number"
+          id="minute"
+          v-model.number="minute"
+          min="0"
+          max="48"
+          placeholder="MM"
+        />
+
+        <label for="second">Second:</label>
+        <input
+          type="number"
+          id="second"
+          v-model.number="second"
+          min="0"
+          max="59"
+          placeholder="SS"
+        />
 
         <button @click="submitStat">Confirm</button>
         <button @click="closePopup">Cancel</button>
@@ -97,7 +117,8 @@ export default {
       playerStats: {},
       isPopupVisible: false,
       selectedStat: '',
-      minute: '',
+      minute: 0,
+      second: 0,
       matchId: null,
       playerId: null,
       statTypes: ['rebounds', 'assists', 'steals', 'blocks', 'turnovers', 'fouls', 'in', 'out', '1pt', '2pt', '3pt']
@@ -287,59 +308,16 @@ export default {
       this.currentPlayerId = playerId;
       this.showStatPopup = true;
       this.selectedStatType = 'points'; // Default stat type
-      this.minute = ''; // Clear the minute input
+      this.minute = 0; // Clear the minute input
+      this.second = 0; // Clear the minute input
     },
 
     closeStatPopup() {
       this.showStatPopup = false;
     },
-
-    async confirmStat() {
-      if (!this.minute || !this.selectedStatType) {
-        alert('Please fill out all fields');
-        return;
-      }
-
-      // Format minute in mm.ss if it's not in the correct format
-      const match = this.matches.find(m => m.match_id === this.currentMatchId);
-      if (!match) return;
-
-      const formattedMinute = this.formatMinute(this.minute);
-
-      const statData = {
-        matchId: this.currentMatchId,
-        playerId: this.currentPlayerId,
-        minute: formattedMinute,
-        stat: this.selectedStatType
-      };
-
-      try {
-        const response = await fetch('/api/match_stat', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(statData),
-        });
-
-        if (response.ok) {
-          alert('Stat added successfully!');
-          this.closeStatPopup(); // Close the popup
-        } else {
-          console.error('Failed to add stat');
-        }
-      } catch (error) {
-        console.error('Error adding stat:', error);
-      }
-    },
-
-    formatMinute(minute) {
-      // Ensure minute is in mm.ss format
-      const parts = minute.split('.');
-      if (parts.length === 2) {
-        return `${parts[0].padStart(2, '0')}:${parts[1].padStart(2, '0')}`;
-      }
-      return '00.00'; // Default if invalid input
+    
+    formatTwoDigitsString(value) {
+      return value < 10 ? `0${value}` : `${value}`;
     },
     handlePlayerClick(matchId, playerId) {
       if (this.startedMatchIds.includes(matchId)) {
@@ -356,15 +334,18 @@ export default {
     },
     
     async submitStat() {
-      if (!this.selectedStat || !this.minute || !this.matchId || !this.playerId) {
+      if (!this.selectedStat || !this.minute || !this.second || !this.matchId || !this.playerId) {
         alert('Please complete all fields.');
         return;
       }
 
+      const formattedMinute = this.formatTwoDigitsString(this.minute);
+      const formattedSecond = this.formatTwoDigitsString(this.second);
+
       const statData = {
         matchId: this.matchId,
         playerId: this.playerId,
-        minute: this.minute,
+        minute: formattedMinute + "." + formattedSecond,
         stat: this.selectedStat
       };
 
@@ -390,10 +371,9 @@ export default {
       }
     },
     startPolling() {
-      // Poll every 30 seconds (adjust as needed)
       this.pollInterval = setInterval(() => {
         this.fetchMatches();
-      }, 500);
+      }, 5000);
     },
     stopPolling() {
       clearInterval(this.pollInterval);
