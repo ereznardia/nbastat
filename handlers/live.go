@@ -180,6 +180,14 @@ func EndMatch(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("Match ended and stats updated."))
+
+	// Sync Match from Redis into Database
+	syncMatch(matchID)
+}
+
+func syncMatch(matchID int) {
+	// pattern := fmt.Sprintf("match:%d:player:*", matchID)
+
 }
 
 func AddMatchStat(w http.ResponseWriter, r *http.Request) {
