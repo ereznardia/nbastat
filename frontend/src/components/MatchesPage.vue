@@ -23,7 +23,8 @@
               :class="[
                 'player',
                 { 'selected-player': isPlayerSelected(match.match_id, 'home', player.id) },
-                { 'disabled-player': startedMatchIds.includes(match.match_id) }
+                { 'disabled-player': startedMatchIds.includes(match.match_id) },
+                { 'highlighted-player': playerStats[match.match_id]?.[match.home_team]?.[player.id]?.in }
               ]">
               <div v-on:click="handlePlayerClick(match.match_id, player.id)" 
                 :class="[
@@ -32,7 +33,7 @@
                 ]">
               {{ player.fullName }}
             </div>
-              <div v-html="getPlayerStatsHtml(match.match_id, match.home_team, player.id)"></div>
+            <div v-html="getPlayerStatsHtml(match.match_id, match.home_team, player.id)"></div>
             </div>
           </div>
 
@@ -45,7 +46,8 @@
               :class="[
                 'player',
                 { 'selected-player': isPlayerSelected(match.match_id, 'away', player.id) },
-                { 'disabled-player': startedMatchIds.includes(match.match_id) }
+                { 'disabled-player': startedMatchIds.includes(match.match_id) },
+                { 'highlighted-player': playerStats[match.match_id]?.[match.away_team]?.[player.id]?.in }
               ]">
               <div v-on:click="handlePlayerClick(match.match_id, player.id)" 
                 :class="[
@@ -54,7 +56,7 @@
                 ]">
               {{ player.fullName }}
             </div>
-              <div v-html="getPlayerStatsHtml(match.match_id, match.away_team, player.id)"></div>
+            <div v-html="getPlayerStatsHtml(match.match_id, match.away_team, player.id)"></div>
             </div>
           </div>
 
@@ -200,7 +202,7 @@ export default {
           if (response.ok) {
             const stats = await response.json();
 
-            // Ensure proper nested structure in playerStats
+            // Store stats and "in" status
             this.playerStats[matchId] = {
               ...this.playerStats[matchId],
               [teamId]: {
@@ -263,7 +265,6 @@ export default {
         });
 
         if (response.ok) {
-          alert('Match started successfully!');
           this.startedMatchIds.push(matchId);
         } else {
           console.error('Failed to start match');
@@ -308,8 +309,8 @@ export default {
       this.currentPlayerId = playerId;
       this.showStatPopup = true;
       this.selectedStatType = 'points'; // Default stat type
-      this.minute = 0; // Clear the minute input
-      this.second = 0; // Clear the minute input
+      this.minute = ''; // Clear the minute input
+      this.second = ''; // Clear the minute input
     },
 
     closeStatPopup() {
@@ -334,7 +335,7 @@ export default {
     },
     
     async submitStat() {
-      if (!this.selectedStat || !this.minute || !this.second || !this.matchId || !this.playerId) {
+      if (!this.selectedStat || !this.matchId || !this.playerId) {
         alert('Please complete all fields.');
         return;
       }
@@ -373,7 +374,7 @@ export default {
     startPolling() {
       this.pollInterval = setInterval(() => {
         this.fetchMatches();
-      }, 5000);
+      }, 1000);
     },
     stopPolling() {
       clearInterval(this.pollInterval);
@@ -573,5 +574,9 @@ h4 {
 
 .popup-content button:last-child:hover {
   background-color: #e53935;
+}
+.highlighted-player {
+  background-color: #e0ffe0;
+  border: 2px solid green;
 }
 </style>

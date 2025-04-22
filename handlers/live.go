@@ -184,8 +184,10 @@ func AddMatchStat(w http.ResponseWriter, r *http.Request) {
 
 	if hasReachedFoulLimit(stats) {
 		// no further stat should be inserted as player should be out
-		http.Error(w, "Player reached 6 fouls, ignoring this stat", http.StatusForbidden)
-		return
+		if MatchStat.Stat != "out" {
+			http.Error(w, "Player reached 6 fouls, ignoring this stat (unless it is out stat)", http.StatusForbidden)
+			return
+		}
 	}
 
 	if MatchStat.Stat == "in" || MatchStat.Stat == "out" {
@@ -207,6 +209,15 @@ func AddMatchStat(w http.ResponseWriter, r *http.Request) {
 	if err := db.Redis.RPush(db.Ctx, redisKey, statJSON).Err(); err != nil {
 		http.Error(w, "Failed to save stat to Redis", http.StatusInternalServerError)
 		return
+	}
+
+	// player is out
+	if hasReachedFoulLimit(stats) {
+		statJSON, _ := json.Marshal(map[string]string{
+			"minute": MatchStat.Minute,
+			"stat":   "out",
+		})
+		db.Redis.RPush(db.Ctx, redisKey, statJSON)
 	}
 
 	w.WriteHeader(http.StatusOK)
@@ -435,6 +446,7 @@ func GetPlayerMatchStat(w http.ResponseWriter, r *http.Request) {
 		}
 
 		statSums["minutes"] = totalMinutes
+		statSums["in"] = (inTime != "")
 	}
 
 	w.Header().Set("Content-Type", "application/json")
