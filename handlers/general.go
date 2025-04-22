@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"skyhawk/db"
+	"strconv"
 	"time"
 
 	"database/sql"
@@ -386,6 +387,57 @@ func AddPlayerTeamHistories(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusOK)
+}
+
+func GetTeamActivePlayers(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	teamIDStr := vars["teamId"]
+
+	teamID, err := strconv.Atoi(teamIDStr)
+	if err != nil {
+		http.Error(w, "Invalid team ID", http.StatusBadRequest)
+		return
+	}
+
+	query := `
+		SELECT 
+			p.player_id AS player_id,
+			CONCAT(p.first_name, ' ', p.last_name) AS player_full_name
+		FROM player_team_history pth
+		JOIN players p ON p.player_id = pth.player_id
+		WHERE pth.team_id = $1 AND pth.end_date IS NULL
+	`
+
+	rows, err := db.PG.Query(query, teamID)
+	if err != nil {
+		http.Error(w, "Database query failed", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	var players []map[string]interface{}
+
+	for rows.Next() {
+		var id int
+		var fullName string
+
+		if err := rows.Scan(&id, &fullName); err != nil {
+			http.Error(w, "Error scanning player data", http.StatusInternalServerError)
+			return
+		}
+
+		player := map[string]interface{}{
+			"id":       id,
+			"fullName": fullName,
+		}
+		players = append(players, player)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(players); err != nil {
+		http.Error(w, "Error encoding response", http.StatusInternalServerError)
+		return
+	}
 }
 
 func GetMatches(w http.ResponseWriter, r *http.Request) {

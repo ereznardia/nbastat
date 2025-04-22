@@ -174,9 +174,12 @@ func AddMatchStat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := validatePlayerInPlay(stats); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
+	if MatchStat.Stat != "in" {
+		// when player is out of game, the only stat can be recorded of him is "in"
+		if err := validatePlayerInPlay(stats); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 	}
 
 	if hasReachedFoulLimit(stats) {
@@ -207,6 +210,78 @@ func AddMatchStat(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusOK)
+}
+
+func GetMatchStats(w http.ResponseWriter, r *http.Request) {
+	keys, err := db.Redis.Keys(db.Ctx, "match:*:player:*:stats").Result()
+	if err != nil {
+		http.Error(w, "Failed to fetch match keys", http.StatusInternalServerError)
+		return
+	}
+
+	matchSet := make(map[string]bool)
+
+	for _, key := range keys {
+		parts := strings.Split(key, ":")
+		if len(parts) >= 2 {
+			matchSet[parts[1]] = true
+		}
+	}
+
+	var matches []int
+	for matchId := range matchSet {
+		id, err := strconv.Atoi(matchId)
+		if err == nil {
+			matches = append(matches, id)
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(matches)
+}
+
+func GetMatchStat(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	matchId := vars["matchId"]
+
+	pattern := "match:" + matchId + ":player:*:stats"
+	keys, err := db.Redis.Keys(db.Ctx, pattern).Result()
+	if err != nil {
+		http.Error(w, "Failed to fetch keys", http.StatusInternalServerError)
+		return
+	}
+
+	type Stat struct {
+		Minute string `json:"minute"`
+		Stat   string `json:"stat"`
+	}
+
+	result := make(map[string][]Stat)
+
+	for _, key := range keys {
+		data, err := db.Redis.LRange(db.Ctx, key, 0, -1).Result()
+		if err != nil {
+			continue
+		}
+
+		var stats []Stat
+		for _, jsonStr := range data {
+			var stat Stat
+			if err := json.Unmarshal([]byte(jsonStr), &stat); err == nil {
+				stats = append(stats, stat)
+			}
+		}
+
+		// Extract player ID from key: match:3:player:101:stats → "101"
+		parts := strings.Split(key, ":")
+		if len(parts) >= 4 {
+			playerID := parts[3]
+			result[playerID] = stats
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result)
 }
 
 func validatePlayerInPlay(stats []string) error {
@@ -374,7 +449,13 @@ func GetPlayerMatchStat(w http.ResponseWriter, r *http.Request) {
 func parseRequestedStats(query string) (map[string]bool, error) {
 	requestedStats := make(map[string]bool)
 
-	if query != "" {
+	if query == "" {
+		// No query provided, return all valid stats
+		for _, stat := range validStatsToFetch {
+			requestedStats[stat] = true
+		}
+		return requestedStats, nil
+	} else {
 		for _, stat := range strings.Split(query, ",") {
 			stat = strings.ToLower(strings.TrimSpace(stat))
 			if !slices.Contains(validStatsToFetch, stat) {

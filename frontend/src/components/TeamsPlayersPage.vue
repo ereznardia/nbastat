@@ -1,5 +1,5 @@
 <template>
-  <div id="app" @keydown.enter="createMatch" tabindex="0">
+  <div id="app" @keydown.enter="handleEnterKey" tabindex="0">
     <!-- Unassigned Players Section -->
     <div class="unassigned-players">
       <h2>Players Without a Team</h2>
@@ -33,8 +33,6 @@
             v-for="player in getPlayersForTeam(team.team_id)"
             :key="player.player_id"
             class="player-box"
-            :class="{ playerHighlighted: isPlayerSelected(player) }"
-            @click.stop="selectPlayer(player)"
           >
             {{ player.first_name }} {{ player.last_name }} ({{ getStartDate(player.player_id, team.team_id) }})
           </div>
@@ -42,14 +40,26 @@
       </div>
     </div>
 
-    <!-- Date Picker Modal -->
-    <div v-if="showDatePicker" class="modal-overlay">
+    <!-- Player-Team Assignment Date Modal -->
+    <div v-if="showTeamPlayerHistoryDatePicker" class="modal-overlay">
       <div class="modal">
         <h3>Select Start Date</h3>
-        <input type="date" v-model="selectedDate" />
+        <input type="date" v-model="selectedTeamPlayerHistoryDate" />
         <div class="modal-buttons">
           <button @click="confirmAssignment">Confirm</button>
           <button @click="cancelAssignment">Cancel</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Match Creation Date Modal -->
+    <div v-if="showMatchDatePicker" class="modal-overlay">
+      <div class="modal">
+        <h3>Select Match Date</h3>
+        <input type="date" v-model="selectedMatchDate" />
+        <div class="modal-buttons">
+          <button @click="confirmMatch">Confirm</button>
+          <button @click="cancelMatch">Cancel</button>
         </div>
       </div>
     </div>
@@ -68,10 +78,11 @@ export default {
       playerTeamHistory: [],
       draggedPlayer: null,
       dropTeamId: null,
-      showDatePicker: false,
-      selectedDate: '',
-      selectedTeams: [], // Array to store selected teams
-      selectedPlayers: [] // Array to store selected players
+      showTeamPlayerHistoryDatePicker: false,
+      showMatchDatePicker: false,
+      selectedTeamPlayerHistoryDate: '',
+      selectedMatchDate: '',
+      selectedTeams: []
     };
   },
   mounted() {
@@ -150,90 +161,82 @@ export default {
     },
     onDrop(teamId) {
       this.dropTeamId = teamId;
-      this.showDatePicker = true;
+      this.showTeamPlayerHistoryDatePicker = true;
     },
     selectTeam(team) {
       const index = this.selectedTeams.findIndex(t => t.team_id === team.team_id);
       if (index === -1) {
-        this.selectedTeams.push(team); // If not selected, add to the array
+        this.selectedTeams.push(team);
       } else {
-        this.selectedTeams.splice(index, 1); // If already selected, remove from the array
+        this.selectedTeams.splice(index, 1);
       }
     },
     isTeamSelected(team) {
       return this.selectedTeams.some(t => t.team_id === team.team_id);
     },
-    selectPlayer(player) {
-      const index = this.selectedPlayers.findIndex(p => p.player_id === player.player_id);
-      if (index === -1) {
-        this.selectedPlayers.push(player);
-      } else {
-        this.selectedPlayers.splice(index, 1);
-      }
-    },
-    isPlayerSelected(player) {
-      return this.selectedPlayers.some(p => p.player_id === player.player_id);
-    },
     async confirmAssignment() {
-      if (!this.selectedDate || !this.draggedPlayer || !this.dropTeamId) return;
+      if (!this.selectedTeamPlayerHistoryDate || !this.draggedPlayer || !this.dropTeamId) return;
 
       const payload = {
         playerId: this.draggedPlayer.player_id,
         teamId: this.dropTeamId,
-        startDate: this.selectedDate,
+        startDate: this.selectedTeamPlayerHistoryDate,
         endDate: null
       };
 
       try {
         await axios.post('http://localhost:8080/api/player_team_history', [payload]);
-        this.showDatePicker = false;
-        this.selectedDate = '';
+        this.showTeamPlayerHistoryDatePicker = false;
+        this.selectedTeamPlayerHistoryDate = '';
         this.draggedPlayer = null;
         this.dropTeamId = null;
-        await this.fetchData(); // Refresh
+        await this.fetchData();
       } catch (err) {
         console.error('Error assigning player to team:', err);
       }
     },
     cancelAssignment() {
-      this.showDatePicker = false;
+      this.showTeamPlayerHistoryDatePicker = false;
       this.draggedPlayer = null;
       this.dropTeamId = null;
-      this.selectedDate = '';
+      this.selectedTeamPlayerHistoryDate = '';
     },
-    async createMatch() {
+    handleEnterKey() {
       if (this.selectedTeams.length === 2) {
-        if (!this.selectedDate) {
-          // Show the date picker if no date is selected yet
-          this.showDatePicker = true;
-          return; // Prevent creating match until date is selected
-        }
-
-        const homeTeam = this.selectedTeams[0];
-        const awayTeam = this.selectedTeams[1];
-
-        const payload = {
-          home_team_id: homeTeam.team_id,
-          away_team_id: awayTeam.team_id,
-          match_date: this.selectedDate
-        };
-
-        try {
-          // Send the match creation request
-          await axios.post('http://localhost:8080/api/matches', payload);
-          alert('Match created successfully!');
-          this.selectedTeams = []; // Clear selected teams after match creation
-        } catch (error) {
-          console.error('Error creating match:', error);
-        }
+        this.showMatchDatePicker = true;
       } else {
-        alert('Please select exactly two teams and choose a date!');
+        alert('Please select exactly two teams before creating a match.');
       }
+    },
+    async confirmMatch() {
+      if (!this.selectedMatchDate || this.selectedTeams.length !== 2) return;
+
+      const payload = [
+          {
+          homeTeam: String(this.selectedTeams[0].team_id),
+          awayTeam: String(this.selectedTeams[1].team_id),
+          date: this.selectedMatchDate
+          }
+      ];
+      
+
+      try {
+        await axios.post('http://localhost:8080/api/matches', payload);
+        alert('Match created successfully!');
+        this.showMatchDatePicker = false;
+        this.selectedMatchDate = '';
+        this.selectedTeams = [];
+      } catch (error) {
+        console.error('Error creating match:', error);
+      }
+    },
+    cancelMatch() {
+      this.showMatchDatePicker = false;
+      this.selectedMatchDate = '';
     }
   }
 };
 </script>
-
 
 <style scoped>
 #app {
@@ -303,9 +306,9 @@ export default {
 }
 
 .player-box.playerHighlighted {
-  background-color: #d4edda; /* Light green background for selected players */
-  border: 1px solid #28a745; /* Green border for selected players */
-  color: #155724; /* Dark green text color */
+  background-color: #d4edda;
+  border: 1px solid #28a745;
+  color: #155724;
 }
 
 .modal-overlay {
