@@ -143,6 +143,45 @@ func StartMatch(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
+func EndMatch(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	matchIDStr, ok := vars["matchId"]
+	if !ok {
+		http.Error(w, "matchId is required in URL", http.StatusBadRequest)
+		return
+	}
+
+	matchID, err := strconv.Atoi(matchIDStr)
+	if err != nil {
+		http.Error(w, "Invalid matchId format", http.StatusBadRequest)
+		return
+	}
+
+	// Get all player stat keys for the match
+	pattern := fmt.Sprintf("match:%d:player:*", matchID)
+	iter := db.Redis.Scan(db.Ctx, 0, pattern, 0).Iterator()
+	for iter.Next(db.Ctx) {
+		playerKey := iter.Val()
+
+		endMatchJSON, _ := json.Marshal(map[string]string{
+			"minute": "48.00",
+			"stat":   "out",
+		})
+
+		if err := db.Redis.RPush(db.Ctx, playerKey, endMatchJSON).Err(); err != nil {
+			http.Error(w, fmt.Sprintf("Failed to save stat to Redis for key %s", playerKey), http.StatusInternalServerError)
+			return
+		}
+	}
+	if err := iter.Err(); err != nil {
+		http.Error(w, "Error scanning Redis keys", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("Match ended and stats updated."))
+}
+
 func AddMatchStat(w http.ResponseWriter, r *http.Request) {
 	var MatchStat struct {
 		MatchID  int    `json:"matchId"`

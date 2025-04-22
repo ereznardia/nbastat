@@ -37,6 +37,7 @@ func SetupRouter() *mux.Router {
 	r.HandleFunc("/api/match_stat/{matchId}/{playerId}", handlers.GetPlayerMatchStat).Methods("GET")
 
 	r.HandleFunc("/api/start_match/{matchId}", handlers.StartMatch).Methods("POST")
+	r.HandleFunc("/api/end_match/{matchId}", handlers.EndMatch).Methods("POST")
 
 	return r
 }

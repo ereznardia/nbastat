@@ -66,6 +66,14 @@
             class="start-match-btn">
             Start Match
           </button>
+
+          <button
+            v-if="startedMatchIds.includes(match.match_id)"
+            @click="endMatch(match.match_id)"
+            class="end-match-btn">
+            End Match
+          </button>
+
         </div>
       </div>
     </div>
@@ -273,6 +281,24 @@ export default {
         console.error('Error starting match:', error);
       }
     },
+    async endMatch(matchId) {
+      try {
+        const response = await fetch(`/api/end_match/${matchId}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          }
+        });
+
+        if (response.ok) {
+          // this.startedMatchIds.push(matchId);
+        } else {
+          console.error('Failed to end match');
+        }
+      } catch (error) {
+        console.error('Error ending match:', error);
+      }
+    },
     // Prepare player data for starting the match
     preparePlayersData(matchId) {
       const match = this.matches.find(m => m.match_id === matchId);
@@ -360,7 +386,6 @@ export default {
         });
 
         if (response.ok) {
-          alert('Stat added successfully!');
           this.closePopup(); // Close the popup after submission
         } else {
           console.error('Error adding stat');
@@ -449,6 +474,20 @@ h4 {
 
 .start-match-btn:hover {
   background-color: #45a049;
+}
+
+.end-match-btn {
+  margin-top: 15px;
+  padding: 10px;
+  background-color: #e83008;
+  color: white;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.end-match-btn:hover {
+  background-color: #e23008;
 }
 
 .match-started-label {
