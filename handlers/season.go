@@ -20,15 +20,20 @@ func GetPlayerSeasonStats(w http.ResponseWriter, r *http.Request) {
 	}
 
 	seasonYear := vars["season_year"]
+	statFilter := r.URL.Query().Get("stat")
+	if statFilter == "" {
+		http.Error(w, "Missing required 'stat' query parameter", http.StatusBadRequest)
+		return
+	}
 
 	rows, err := db.PG.Query(`
 		SELECT ms.match_id, ms.player_id, ms.minute, ms.stat
 		FROM matches_stats ms
 		JOIN matches m ON ms.match_id = m.match_id
 		WHERE ms.player_id = $1
-		AND ms.stat = 'rebounds'
-		AND EXTRACT(YEAR FROM m.date) = $2
-	`, playerID, seasonYear)
+		AND ms.stat = $2
+		AND EXTRACT(YEAR FROM m.date) = $3
+	`, playerID, statFilter, seasonYear)
 	if err != nil {
 		http.Error(w, "Database query error", http.StatusInternalServerError)
 		return
