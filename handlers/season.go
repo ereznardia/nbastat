@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"skyhawk/db"
@@ -9,6 +10,8 @@ import (
 	"github.com/gorilla/mux"
 	_ "github.com/lib/pq"
 )
+
+// http://localhost:8080/api/player_stats/101/2025?stat=assists
 
 func GetPlayerSeasonStats(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
@@ -21,19 +24,24 @@ func GetPlayerSeasonStats(w http.ResponseWriter, r *http.Request) {
 
 	seasonYear := vars["season_year"]
 	statFilter := r.URL.Query().Get("stat")
-	if statFilter == "" {
-		http.Error(w, "Missing required 'stat' query parameter", http.StatusBadRequest)
-		return
-	}
 
-	rows, err := db.PG.Query(`
+	baseQuery := `
 		SELECT ms.match_id, ms.player_id, ms.minute, ms.stat
 		FROM matches_stats ms
 		JOIN matches m ON ms.match_id = m.match_id
 		WHERE ms.player_id = $1
-		AND ms.stat = $2
-		AND EXTRACT(YEAR FROM m.date) = $3
-	`, playerID, statFilter, seasonYear)
+		AND EXTRACT(YEAR FROM m.date) = $2
+	`
+
+	var rows *sql.Rows
+
+	if statFilter != "" {
+		baseQuery += " AND ms.stat = $3"
+		rows, err = db.PG.Query(baseQuery, playerID, seasonYear, statFilter)
+	} else {
+		rows, err = db.PG.Query(baseQuery, playerID, seasonYear)
+	}
+
 	if err != nil {
 		http.Error(w, "Database query error", http.StatusInternalServerError)
 		return

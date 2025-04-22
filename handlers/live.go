@@ -186,8 +186,54 @@ func EndMatch(w http.ResponseWriter, r *http.Request) {
 }
 
 func syncMatch(matchID int) {
-	// pattern := fmt.Sprintf("match:%d:player:*", matchID)
+	redisKey := fmt.Sprintf("match:%d:player:*:stats", matchID)
 
+	keys, err := db.Redis.Keys(db.Ctx, redisKey).Result()
+	if err != nil {
+		log.Printf("Failed to fetch keys for match %d: %v", matchID, err)
+		return
+	}
+
+	for _, key := range keys {
+		stats, err := db.Redis.LRange(db.Ctx, key, 0, -1).Result()
+		if err != nil {
+			log.Printf("Failed to fetch stats for key %s: %v", key, err)
+			continue
+		}
+
+		successfullySynced := true
+		for _, stat := range stats {
+			var statData map[string]interface{}
+			if err := json.Unmarshal([]byte(stat), &statData); err != nil {
+				log.Printf("Failed to unmarshal stat data: %v", err)
+				successfullySynced = false
+				continue
+			}
+
+			minute := statData["minute"].(string)
+			statType := statData["stat"].(string)
+
+			parts := strings.Split(key, ":")
+			playerID := parts[3]
+
+			_, err := db.PG.Exec(`
+				INSERT INTO matches_stats (match_id, player_id, minute, stat)
+				VALUES ($1, $2, $3, $4)
+			`, matchID, playerID, minute, statType)
+			if err != nil {
+				log.Printf("Failed to insert stat into database: %v", err)
+				successfullySynced = false
+				break
+			}
+		}
+
+		if successfullySynced {
+			// Delete the key from Redis
+			if err := db.Redis.Del(db.Ctx, key).Err(); err != nil {
+				log.Printf("Failed to delete key %s from Redis: %v", key, err)
+			}
+		}
+	}
 }
 
 func AddMatchStat(w http.ResponseWriter, r *http.Request) {
