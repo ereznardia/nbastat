@@ -46,6 +46,16 @@
       </div>
     </div>
   </div>
+  <div v-if="showMatchDatePicker" class="modal-overlay">
+  <div class="modal">
+      <h3>Select Match Date</h3>
+      <input type="date" v-model="matchDate" />
+      <div class="modal-buttons">
+        <button @click="confirmMatchWithDate">Confirm</button>
+        <button @click="showMatchDatePicker = false">Cancel</button>
+      </div>
+    </div>
+  </div>
 </template>
 
 <script>
@@ -66,6 +76,8 @@ export default {
       selectedUnassignDate: '',
       unassignPlayer: null,
       unassignTeamId: null,
+      matchDate: '',
+      showMatchDatePicker: false,
     };
   },
   mounted() {
@@ -223,9 +235,33 @@ export default {
     },
     handleEnterKey() {
       if (this.selectedTeams.length === 2) {
-        this.confirmMatch();
+        this.showMatchDatePicker = true;
       } else {
         alert('Please select exactly two teams before creating a match.');
+      }
+    },
+    async confirmMatchWithDate() {
+      if (this.selectedTeams.length !== 2 || !this.matchDate) {
+        alert('Please select a date.');
+        return;
+      }
+
+      const payload = [
+        {
+          homeTeam: String(this.selectedTeams[0].team_id),
+          awayTeam: String(this.selectedTeams[1].team_id),
+          date: this.matchDate // Use selected date
+        }
+      ];
+
+      try {
+        await axios.post('/api/matches', payload);
+        alert('Match created successfully!');
+        this.selectedTeams = [];
+        this.matchDate = '';
+        this.showMatchDatePicker = false;
+      } catch (error) {
+        console.error('Error creating match', error);
       }
     },
     async confirmMatch() {
