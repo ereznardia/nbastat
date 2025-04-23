@@ -70,8 +70,8 @@ func checkForTables() {
 				date DATE NOT NULL,
 				home_team INT REFERENCES teams(team_id) ON DELETE CASCADE,
 				away_team INT REFERENCES teams(team_id) ON DELETE CASCADE,
-				home_score INT,
-				away_score INT
+				home_score INT DEFAULT 0,
+				away_score INT DEFAULT 0
 			);
 		`)
 

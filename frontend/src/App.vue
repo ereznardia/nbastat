@@ -6,18 +6,21 @@
         <ul>
           <li><a href="#" @click.prevent="showTeamsPlayers">Teams & Players</a></li>
           <li><a href="#" @click.prevent="showMatches">Matches</a></li>
+          <li><a href="#" @click.prevent="showStatistics">Statistics</a></li>
         </ul>
       </nav>
     </header>
 
-    <!-- Teams & Players Div -->
     <div v-if="currentView === 'teams-players'">
       <TeamsPlayersPage />
     </div>
 
-    <!-- Matches Div -->
     <div v-if="currentView === 'matches'">
       <MatchesPage />
+    </div>
+
+    <div v-if="currentView === 'statistics'">
+      <StatisticsPage />
     </div>
 
   </div>
@@ -26,12 +29,14 @@
 <script>
 import TeamsPlayersPage from './components/TeamsPlayersPage.vue';
 import MatchesPage from './components/MatchesPage.vue';
+import StatisticsPage from './components/StatisticsPage.vue';
 
 export default {
   name: 'App',
   components: {
     TeamsPlayersPage,
     MatchesPage,
+    StatisticsPage,
   },
   data() {
     return {
@@ -45,8 +50,8 @@ export default {
     showMatches() {
       this.currentView = 'matches'; // Switch to Matches
     },
-    showLiveStats() {
-      this.currentView = 'live-stats'; // Switch to Live Stats
+    showStatistics() {
+      this.currentView = 'statistics'; // Switch to Statistics
     },
   },
 };

@@ -5,13 +5,21 @@
       <p>No matches created yet.</p>
     </div>
     <div class="matches-grid">
-      <div v-for="match in matches" :key="match.match_id" class="match-card">
+      <div v-for="match in matches" :key="match.match_id" class="match-card" :class="{ 'disabled': match.home_score > 0 || match.away_score > 0 }">
         <div class="match-header">
           <h3>Match #{{ match.match_id }}</h3>
         </div>
         <div class="match-details">
-          <p><strong>Home Team:</strong> {{ getTeamName(match.home_team) }}</p>
-          <p><strong>Away Team:</strong> {{ getTeamName(match.away_team) }}</p>
+          <p>
+            <strong>Home Team:</strong>
+            {{ getTeamName(match.home_team) }}
+            <span v-if="match.home_score !== null"> ({{ match.home_score }})</span>
+          </p>
+          <p>
+            <strong>Away Team:</strong>
+            {{ getTeamName(match.away_team) }}
+            <span v-if="match.away_score !== null"> ({{ match.away_score }})</span>
+          </p>
           <p><strong>Date:</strong> {{ formatDate(match.date) }}</p>
 
           <h4>{{ getTeamName(match.home_team) }} Players</h4>
@@ -61,7 +69,7 @@
           </div>
 
           <button
-            v-if="!startedMatchIds.includes(match.match_id)"
+            v-if="!startedMatchIds.includes(match.match_id) && match.home_score === 0 && match.away_score === 0"
             @click="startMatch(match.match_id)"
             class="start-match-btn">
             Start Match
@@ -618,5 +626,9 @@ h4 {
 .highlighted-player {
   background-color: #e0ffe0;
   border: 2px solid green;
+}
+.disabled{
+  pointer-events: none;
+  opacity: 0.7;
 }
 </style>

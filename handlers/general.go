@@ -416,7 +416,7 @@ func GetTeamActivePlayers(w http.ResponseWriter, r *http.Request) {
 func GetMatches(w http.ResponseWriter, r *http.Request) {
 	// Query to select all matches from the database
 	rows, err := db.PG.Query(`
-		SELECT match_id, date, home_team, away_team FROM matches
+		SELECT match_id, date, home_team, away_team, home_score, away_score FROM matches
 	`)
 
 	if err != nil {
@@ -435,19 +435,23 @@ func GetMatches(w http.ResponseWriter, r *http.Request) {
 		var date time.Time
 		var homeTeam int64
 		var awayTeam int64
+		var homeScore int64
+		var awayScore int64
 
 		// Scan the row into variables
-		if err := rows.Scan(&matchID, &date, &homeTeam, &awayTeam); err != nil {
+		if err := rows.Scan(&matchID, &date, &homeTeam, &awayTeam, &homeScore, &awayScore); err != nil {
 			http.Error(w, fmt.Sprintf("Error scanning row: %v", err), http.StatusInternalServerError)
 			return
 		}
 
 		// Add the player to the result slice
 		matches = append(matches, map[string]interface{}{
-			"match_id":  matchID,
-			"date":      date,
-			"home_team": homeTeam,
-			"away_team": awayTeam,
+			"match_id":   matchID,
+			"date":       date,
+			"home_team":  homeTeam,
+			"away_team":  awayTeam,
+			"home_score": homeScore,
+			"away_score": awayScore,
 		})
 	}
 

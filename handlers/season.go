@@ -1,73 +1,102 @@
 package handlers
 
 import (
-	"database/sql"
 	"encoding/json"
+	"log"
 	"net/http"
 	"skyhawk/db"
-	"strconv"
 
 	"github.com/gorilla/mux"
 	_ "github.com/lib/pq"
 )
 
-// http://localhost:8080/api/player_stats/101/2025?stat=assists
-
-func GetPlayerSeasonStats(w http.ResponseWriter, r *http.Request) {
+func GetAverageStat(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
+	season := vars["season"]
+	entity := vars["entity"]
+	entityId := vars["entityId"]
+	stat := vars["stat"]
 
-	playerID, err := strconv.Atoi(vars["playerId"])
-	if err != nil {
-		http.Error(w, "Invalid player ID", http.StatusBadRequest)
-		return
-	}
+	var avg float64
 
-	seasonYear := vars["season_year"]
-	statFilter := r.URL.Query().Get("stat")
+	if stat == "points" {
+		points := []struct {
+			name  string
+			value float64
+		}{
+			{"1pt", 1},
+			{"2pt", 2},
+			{"3pt", 3},
+		}
 
-	baseQuery := `
-		SELECT ms.match_id, ms.player_id, ms.minute, ms.stat
-		FROM matches_stats ms
-		JOIN matches m ON ms.match_id = m.match_id
-		WHERE ms.player_id = $1
-		AND EXTRACT(YEAR FROM m.date) = $2
-	`
+		var total float64
+		for _, pt := range points {
+			var query string
+			if entity == "player" {
+				query = `
+					SELECT COUNT(*) * 1.0 / COUNT(DISTINCT match_id) AS avg
+					FROM matches_stats
+					WHERE player_id = $1 AND stat = $2 AND EXTRACT(YEAR FROM match_date) = $3
+				`
+			} else if entity == "team" {
+				query = `
+					SELECT COUNT(*) * 1.0 / COUNT(DISTINCT match_id) AS avg
+					FROM matches_stats
+					WHERE team_id = $1 AND stat = $2 AND EXTRACT(YEAR FROM match_date) = $3
+				`
+			} else {
+				http.Error(w, "Wrong entity type", http.StatusBadRequest)
+				log.Printf("Wrong entity type: %s", entity)
+				return
+			}
 
-	var rows *sql.Rows
+			var ptAvg float64
+			err := db.PG.QueryRow(query, entityId, pt.name, season).Scan(&ptAvg)
+			if err != nil {
+				log.Printf("Average stat query error for %s: %v", pt.name, err)
+			}
 
-	if statFilter != "" {
-		baseQuery += " AND ms.stat = $3"
-		rows, err = db.PG.Query(baseQuery, playerID, seasonYear, statFilter)
+			total += ptAvg * pt.value
+		}
+
+		avg = total
 	} else {
-		rows, err = db.PG.Query(baseQuery, playerID, seasonYear)
-	}
-
-	if err != nil {
-		http.Error(w, "Database query error", http.StatusInternalServerError)
-		return
-	}
-	defer rows.Close()
-
-	var stats []map[string]interface{}
-
-	for rows.Next() {
-		var matchID, playerID int
-		var minute float64
-		var stat string
-
-		if err := rows.Scan(&matchID, &playerID, &minute, &stat); err != nil {
-			http.Error(w, "Failed to parse row", http.StatusInternalServerError)
+		var query string
+		if entity == "player" {
+			query = `
+				SELECT COUNT(*) * 1.0 / COUNT(DISTINCT match_id) AS avg
+				FROM matches_stats
+				WHERE player_id = $1 AND stat = $2 AND EXTRACT(YEAR FROM match_date) = $3
+			`
+		} else if entity == "team" {
+			query = `
+				SELECT COUNT(*) * 1.0 / COUNT(DISTINCT match_id) AS avg
+				FROM matches_stats
+				WHERE team_id = $1 AND stat = $2 AND EXTRACT(YEAR FROM match_date) = $3
+			`
+		} else {
+			http.Error(w, "Wrong entity type", http.StatusBadRequest)
+			log.Printf("Wrong entity type: %s", entity)
 			return
 		}
 
-		stats = append(stats, map[string]interface{}{
-			"match_id":  matchID,
-			"player_id": playerID,
-			"minute":    minute,
-			"stat":      stat,
-		})
+		err := db.PG.QueryRow(query, entityId, stat, season).Scan(&avg)
+		if err != nil {
+			http.Error(w, "Error calculating average stat", http.StatusInternalServerError)
+			log.Printf("Average stat query error: %v", err)
+			return
+		} else {
+			log.Printf("ok")
+		}
+	}
+
+	response := map[string]interface{}{
+		"entityId": entityId,
+		"stat":     stat,
+		"season":   season,
+		"average":  avg,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(stats)
+	json.NewEncoder(w).Encode(response)
 }
