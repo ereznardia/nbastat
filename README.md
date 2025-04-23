@@ -45,5 +45,29 @@ Steps to work with the system:  (steps 1-5 are needed before we can actually wor
 
 
 
-  
-   
+Deployment to AWS
+
+One option is to 
+ 1. Launch an EC2 instance
+ 2. Install Docker and Docker Compose
+ 3. I would setup some CI/CD pipeline to deploy code
+ 4. Write a docker-compose.yml with Go backend, Postgres, and Redis.
+ 5. docker-compose up -d
+ 6. Set up security groups to allow traffic on your app’s port
+
+
+
+
+Tech Stack Decision:
+
+Live Stats with Redis
+I chose Redis to handle live game statistics due to its high performance and ability to efficiently handle multiple simultaneous updates. Each player maintains their own key in the format:
+match:<matchId>:team:<teamId>:player:<playerId>,
+which gets updated with a list of stat events throughout the match.
+
+Persistent Storage with PostgreSQL
+PostgreSQL is a solid choice for storing historical data. With approximately 82 games per season and between 200 to 400 stat events per team, it easily handles the required scale and ensures data integrity over time.
+
+
+ 
+
