@@ -21,25 +21,25 @@ services:
     networks:
       - app-network
 
-  # app:
-  #   build: .
-  #   container_name: go_app
-  #   depends_on:
-  #     - postgres
-  #     - redis
-  #   environment:
-  #     DB_HOST: postgres
-  #     DB_PORT: 5432
-  #     DB_USER: erez
-  #     DB_PASSWORD: 1234
-  #     DB_NAME: nbastat
-  #     REDIS_ADDR: redis:6379
-  #     REDIS_PASSWORD: ""
-  #     REDIS_DB: "0"
-  #   ports:
-  #     - "8080:8080"
-  #   networks:
-  #     - app-network
+  app:
+    build: .
+    container_name: go_app
+    depends_on:
+      - postgres
+      - redis
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: erez
+      DB_PASSWORD: 1234
+      DB_NAME: nbastat
+      REDIS_ADDR: redis:6379
+      REDIS_PASSWORD: ""
+      REDIS_DB: "0"
+    ports:
+      - "8080:8080"
+    networks:
+      - app-network
 
 volumes:
   postgres_data:
