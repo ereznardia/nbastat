@@ -43,6 +43,14 @@ func StartMatch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Check if match is already started
+	startKey := fmt.Sprintf("match:%d:started", matchID)
+	started, err := db.Redis.Get(db.Ctx, startKey).Result()
+	if err == nil && started == "true" {
+		http.Error(w, "Match already started", http.StatusBadRequest)
+		return
+	}
+
 	var teamPlayers map[int][]int
 	if err := json.NewDecoder(r.Body).Decode(&teamPlayers); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
@@ -99,29 +107,10 @@ func StartMatch(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, fmt.Sprintf("Player %d is not currently on team %d", playerID, teamID), http.StatusBadRequest)
 				return
 			}
+		}
 
-			redisKey := fmt.Sprintf("match:%d:player:%d:stats", matchID, playerID)
-
-			existingStats, err := db.Redis.LRange(db.Ctx, redisKey, 0, -1).Result()
-			if err != nil {
-				http.Error(w, "Failed to read stats from Redis", http.StatusInternalServerError)
-				return
-			}
-
-			skip := false
-			for _, item := range existingStats {
-				var record map[string]string
-				if err := json.Unmarshal([]byte(item), &record); err == nil {
-					if record["minute"] == "00.00" && record["stat"] == "in" {
-						skip = true
-						break
-					}
-				}
-			}
-
-			if skip {
-				continue
-			}
+		for _, playerID := range players {
+			redisKey := fmt.Sprintf("match:%d:team:%d:player:%d:stats", matchID, teamID, playerID)
 
 			statJSON, err := json.Marshal(map[string]string{
 				"minute": "00.00",
@@ -136,7 +125,18 @@ func StartMatch(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, "Failed to save stat to Redis", http.StatusInternalServerError)
 				return
 			}
+
+			playerTeamKey := fmt.Sprintf("match:%d:player:%d:team", matchID, playerID)
+			if err := db.Redis.Set(db.Ctx, playerTeamKey, teamID, 0).Err(); err != nil {
+				http.Error(w, "Failed to map player to team in Redis", http.StatusInternalServerError)
+				return
+			}
 		}
+	}
+
+	if err := db.Redis.Set(db.Ctx, startKey, "true", 0).Err(); err != nil {
+		http.Error(w, "Failed to mark match as started", http.StatusInternalServerError)
+		return
 	}
 
 	w.WriteHeader(http.StatusOK)
@@ -157,7 +157,7 @@ func EndMatch(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Get all player stat keys for the match
-	pattern := fmt.Sprintf("match:%d:player:*", matchID)
+	pattern := fmt.Sprintf("match:%d:team:*:player:*", matchID)
 	iter := db.Redis.Scan(db.Ctx, 0, pattern, 0).Iterator()
 	for iter.Next(db.Ctx) {
 		playerKey := iter.Val()
@@ -185,7 +185,7 @@ func EndMatch(w http.ResponseWriter, r *http.Request) {
 }
 
 func syncMatch(matchID int) {
-	redisKey := fmt.Sprintf("match:%d:player:*:stats", matchID)
+	redisKey := fmt.Sprintf("match:%d:team:*:player:*:stats", matchID)
 
 	keys, err := db.Redis.Keys(db.Ctx, redisKey).Result()
 	if err != nil {
@@ -259,7 +259,18 @@ func AddMatchStat(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Redis key per player per match
-	redisKey := fmt.Sprintf("match:%d:player:%d:stats", MatchStat.MatchID, MatchStat.PlayerID)
+	teamIDStr, err := db.Redis.Get(db.Ctx, fmt.Sprintf("match:%d:player:%d:team", MatchStat.MatchID, MatchStat.PlayerID)).Result()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	teamId, err := strconv.Atoi(teamIDStr)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	redisKey := fmt.Sprintf("match:%d:team:%d:player:%d:stats", MatchStat.MatchID, teamId, MatchStat.PlayerID)
 
 	stats, err := db.Redis.LRange(db.Ctx, redisKey, 0, -1).Result()
 	if err != nil {
@@ -316,7 +327,7 @@ func AddMatchStat(w http.ResponseWriter, r *http.Request) {
 }
 
 func GetMatchStats(w http.ResponseWriter, r *http.Request) {
-	keys, err := db.Redis.Keys(db.Ctx, "match:*:player:*:stats").Result()
+	keys, err := db.Redis.Keys(db.Ctx, "match:*:team:*:player:*:stats").Result()
 	if err != nil {
 		http.Error(w, "Failed to fetch match keys", http.StatusInternalServerError)
 		return
@@ -340,50 +351,12 @@ func GetMatchStats(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(matches)
-}
 
-func GetMatchStat(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	matchId := vars["matchId"]
-
-	pattern := "match:" + matchId + ":player:*:stats"
-	keys, err := db.Redis.Keys(db.Ctx, pattern).Result()
-	if err != nil {
-		http.Error(w, "Failed to fetch keys", http.StatusInternalServerError)
-		return
+	if len(matches) == 0 {
+		json.NewEncoder(w).Encode([]int{})
+	} else {
+		json.NewEncoder(w).Encode(matches)
 	}
-
-	type Stat struct {
-		Minute string `json:"minute"`
-		Stat   string `json:"stat"`
-	}
-
-	result := make(map[string][]Stat)
-
-	for _, key := range keys {
-		data, err := db.Redis.LRange(db.Ctx, key, 0, -1).Result()
-		if err != nil {
-			continue
-		}
-
-		var stats []Stat
-		for _, jsonStr := range data {
-			var stat Stat
-			if err := json.Unmarshal([]byte(jsonStr), &stat); err == nil {
-				stats = append(stats, stat)
-			}
-		}
-
-		parts := strings.Split(key, ":")
-		if len(parts) >= 4 {
-			playerID := parts[3]
-			result[playerID] = stats
-		}
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(result)
 }
 
 func validatePlayerInPlay(stats []string) error {
@@ -448,15 +421,32 @@ func validateInOutSequence(stats []string, newStat string) error {
 	return fmt.Errorf("invalid sequence of 'in' - 'out'")
 }
 
-func GetPlayerMatchStat(w http.ResponseWriter, r *http.Request) {
+func GetMatchStat(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	matchID, _ := strconv.Atoi(vars["matchId"])
-	playerID, _ := strconv.Atoi(vars["playerId"])
+	entity := vars["entity"]
+	entityID, _ := strconv.Atoi(vars["entityId"])
 
-	redisKey := fmt.Sprintf("match:%d:player:%d:stats", matchID, playerID)
+	redisKey := ""
+	if entity == "team" {
+		redisKey = fmt.Sprintf("match:%d:team:%d:player:*:stats", matchID, entityID)
+	} else if entity == "player" {
+		teamIDStr, err := db.Redis.Get(db.Ctx, fmt.Sprintf("match:%d:player:%d:team", matchID, entityID)).Result()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		teamId, err := strconv.Atoi(teamIDStr)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		redisKey = fmt.Sprintf("match:%d:team:%d:player:%d:stats", matchID, teamId, entityID)
+	} else {
+		http.Error(w, "Invalid entity type", http.StatusBadRequest)
+		return
+	}
 
-	// Get recorded stats from redis
-	// and sort by minute (just in case it is not sorted)
 	stats, err := db.Redis.LRange(db.Ctx, redisKey, 0, -1).Result()
 	if err != nil || len(stats) == 0 {
 		http.Error(w, "No stats found for player", http.StatusNotFound)
@@ -545,7 +535,7 @@ func GetPlayerMatchStat(w http.ResponseWriter, r *http.Request) {
 }
 
 func lastMatchRecordedMinute(matchID int) string {
-	pattern := fmt.Sprintf("match:%d:player:*:stats", matchID)
+	pattern := fmt.Sprintf("match:%d:team:*:player:*:stats", matchID)
 	keys, err := db.Redis.Keys(db.Ctx, pattern).Result()
 	if err != nil || len(keys) == 0 {
 		return "0" // fallback default
@@ -599,31 +589,6 @@ func parseRequestedStats(query string) (map[string]bool, error) {
 	}
 
 	return requestedStats, nil
-}
-
-func ClearAllMatchStats() error {
-	var cursor uint64
-	match := "match:*"
-
-	for {
-		keys, nextCursor, err := db.Redis.Scan(db.Ctx, cursor, match, 100).Result()
-		if err != nil {
-			return fmt.Errorf("scan failed: %v", err)
-		}
-
-		if len(keys) > 0 {
-			if err := db.Redis.Del(db.Ctx, keys...).Err(); err != nil {
-				return fmt.Errorf("failed to delete keys: %v", err)
-			}
-		}
-
-		cursor = nextCursor
-		if cursor == 0 {
-			break
-		}
-	}
-
-	return nil
 }
 
 func sortStatsByMinute(stats []string) []string {

@@ -195,6 +195,7 @@ export default {
         const response = await fetch('/api/match_stats');
         if (response.ok) {
           this.startedMatchIds = await response.json();
+          console.log('done started matches');
         }
       } catch (error) {
         console.error('Error fetching started matches:', error);
@@ -206,7 +207,7 @@ export default {
 
       for (const player of players) {
         try {
-          const response = await fetch(`/api/match_stat/${matchId}/${player.id}`);
+          const response = await fetch(`/api/match_stat/${matchId}/player/${player.id}`);
           if (response.ok) {
             const stats = await response.json();
 

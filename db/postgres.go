@@ -26,11 +26,15 @@ func InitPostgres(dsn string) {
 	// After connection, check for tables existence.
 	// In real enviroment, i would have some infrastructure tool to initialize and maintain the infrastructure (Terraform or something)
 	// For now, I will check tables here and create if not there.
-	checkForTable()
+	checkForTables()
 
 }
 
-func checkForTable() {
+func checkForTables() {
+
+	// PG.Exec(fmt.Sprintf("DROP TABLE IF EXISTS %s;", "matches_stats"))
+	// PG.Exec(fmt.Sprintf("DROP TABLE IF EXISTS %s;", "matches"))
+
 	// Create Tables if they don't exist
 	createTableIfNotExists("teams", `
 		CREATE TABLE teams (
@@ -39,7 +43,6 @@ func checkForTable() {
 		);
 	`)
 
-	// PG.Exec(fmt.Sprintf("DROP TABLE IF EXISTS %s;", "players"))
 	createTableIfNotExists("players", `
 			CREATE TABLE players (
 				player_id SERIAL PRIMARY KEY,  -- Auto-incrementing ID
@@ -48,7 +51,6 @@ func checkForTable() {
 			);
 		`)
 
-	// PG.Exec(fmt.Sprintf("DROP TABLE IF EXISTS %s;", "player_team_history"))
 	createTableIfNotExists("player_team_history", `
 		CREATE TABLE player_team_history (
 			history_id SERIAL PRIMARY KEY,  -- Auto-incrementing ID
@@ -66,7 +68,6 @@ func checkForTable() {
 		log.Fatalf("Error creating unique player-team-history index: %v", err)
 	}
 
-	// PG.Exec(fmt.Sprintf("DROP TABLE IF EXISTS %s;", "matches"))
 	createTableIfNotExists("matches", `
 			CREATE TABLE matches (
 				match_id SERIAL PRIMARY KEY,  -- Auto-incrementing ID
@@ -85,7 +86,6 @@ func checkForTable() {
 		log.Fatalf("Error creating unique match index: %v", err)
 	}
 
-	// PG.Exec(fmt.Sprintf("DROP TABLE IF EXISTS %s;", "matches_stats"))
 	createTableIfNotExists("matches_stats", `
 			CREATE TABLE matches_stats (
 				match_id INT REFERENCES matches(match_id) ON DELETE CASCADE,
