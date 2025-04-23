@@ -45,43 +45,7 @@
         </div>
       </div>
     </div>
-
-    <!-- Player-Team Assignment Date Modal -->
-    <div v-if="showTeamPlayerHistoryDatePicker" class="modal-overlay">
-      <div class="modal">
-        <h3>Select Start Date</h3>
-        <input type="date" v-model="selectedTeamPlayerHistoryDate" />
-        <div class="modal-buttons">
-          <button @click="confirmAssignment">Confirm</button>
-          <button @click="cancelAssignment">Cancel</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Match Creation Date Modal -->
-    <div v-if="showMatchDatePicker" class="modal-overlay">
-      <div class="modal">
-        <h3>Select Match Date</h3>
-        <input type="date" v-model="selectedMatchDate" />
-        <div class="modal-buttons">
-          <button @click="confirmMatch">Confirm</button>
-          <button @click="cancelMatch">Cancel</button>
-        </div>
-      </div>
-    </div>
   </div>
-
-  <div v-if="showUnassignDatePicker" class="modal-overlay">
-  <div class="modal">
-    <h3>Select End Date</h3>
-    <input type="date" v-model="selectedUnassignDate" />
-    <div class="modal-buttons">
-      <button @click="confirmUnassign">Confirm</button>
-      <button @click="cancelUnassign">Cancel</button>
-    </div>
-  </div>
-</div>
-
 </template>
 
 <script>
@@ -96,10 +60,6 @@ export default {
       playerTeamHistory: [],
       draggedPlayer: null,
       dropTeamId: null,
-      showTeamPlayerHistoryDatePicker: false,
-      showMatchDatePicker: false,
-      selectedTeamPlayerHistoryDate: '',
-      selectedMatchDate: '',
       selectedTeams: [],
       dragSourceTeamId: null,
       showUnassignDatePicker: false,
@@ -184,7 +144,7 @@ export default {
     },
     onDrop(teamId) {
       this.dropTeamId = teamId;
-      this.showTeamPlayerHistoryDatePicker = true;
+      this.assignPlayerToTeam();
     },
     selectTeam(team) {
       const index = this.selectedTeams.findIndex(t => t.team_id === team.team_id);
@@ -197,30 +157,31 @@ export default {
     isTeamSelected(team) {
       return this.selectedTeams.some(t => t.team_id === team.team_id);
     },
-    async confirmAssignment() {
-      if (!this.selectedTeamPlayerHistoryDate || !this.draggedPlayer || !this.dropTeamId) return;
+    async assignPlayerToTeam() {
+      const currentDate = this.getCurrentDate(); // Get current date in dd/mm/yyyy format
+
+      if (!this.draggedPlayer || !this.dropTeamId) return;
 
       const payload = {
         playerId: this.draggedPlayer.player_id,
         teamId: this.dropTeamId,
-        startDate: this.selectedTeamPlayerHistoryDate,
+        startDate: currentDate, // Use current date here
         endDate: null
       };
 
       try {
         await axios.post('/api/player_team_history', [payload]);
-        this.showTeamPlayerHistoryDatePicker = false;
-        this.selectedTeamPlayerHistoryDate = '';
         this.draggedPlayer = null;
         this.dropTeamId = null;
-        this.dragSourceTeamId = null;
-        await this.fetchData();
+        this.fetchData();
       } catch (err) {
         console.error('Error assigning player to team:', err);
       }
     },
     async confirmUnassign() {
-      if (!this.selectedUnassignDate || !this.unassignPlayer || !this.unassignTeamId) return;
+      const currentDate = this.getCurrentDate(); // Get current date in dd/mm/yyyy format
+
+      if (!this.unassignPlayer || !this.unassignTeamId) return;
 
       let history = null;
       for (const h of this.playerTeamHistory) {
@@ -243,31 +204,22 @@ export default {
         await axios.post(`/api/leave_team`, {
           player_id: this.unassignPlayer.player_id,
           team_id: this.unassignTeamId,
-          end_date: this.selectedUnassignDate
+          end_date: currentDate // Use current date here
         });
 
-        this.showUnassignDatePicker = false;
-        this.selectedUnassignDate = '';
         this.unassignPlayer = null;
         this.unassignTeamId = null;
-
-        await this.fetchData();
+        this.fetchData();
       } catch (err) {
         console.error('Error unassigning player:', err);
       }
     },
-    cancelAssignment() {
-      this.showTeamPlayerHistoryDatePicker = false;
-      this.draggedPlayer = null;
-      this.dropTeamId = null;
-      this.selectedTeamPlayerHistoryDate = '';
-      this.dragSourceTeamId = null;
-    },
-    cancelUnassign() {
-      this.showUnassignDatePicker = false;
-      this.selectedUnassignDate = '';
-      this.unassignPlayer = null;
-      this.unassignTeamId = null;
+    getCurrentDate() {
+      const date = new Date();
+      const day = String(date.getDate()).padStart(2, '0');
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const year = date.getFullYear();
+      return `${year}-${month}-${day}`; // Format yyyy-mm-dd
     },
     handleEnterKey() {
       if (this.selectedTeams.length === 2) {
@@ -277,44 +229,28 @@ export default {
       }
     },
     async confirmMatch() {
-      if (!this.selectedMatchDate || this.selectedTeams.length !== 2) return;
+      if (this.selectedTeams.length !== 2) return;
 
       const payload = [
           {
           homeTeam: String(this.selectedTeams[0].team_id),
           awayTeam: String(this.selectedTeams[1].team_id),
-          date: this.selectedMatchDate
+          date: this.getCurrentDate() // Use current date for the match
           }
       ];
-      
 
       try {
         await axios.post('/api/matches', payload);
         alert('Match created successfully!');
-        this.showMatchDatePicker = false;
-        this.selectedMatchDate = '';
         this.selectedTeams = [];
       } catch (error) {
         console.error('Error creating match', error);
       }
-    },
-    cancelMatch() {
-      this.showMatchDatePicker = false;
-      this.selectedMatchDate = '';
-    },
-    handleUnassignDrop() {
-      if (!this.draggedPlayer || !this.dragSourceTeamId) return;
-
-      this.unassignPlayer = this.draggedPlayer;
-      this.unassignTeamId = this.dragSourceTeamId;
-      this.showUnassignDatePicker = true;
-
-      this.draggedPlayer = null;
-      this.dragSourceTeamId = null;
     }
   }
 };
 </script>
+
 
 <style scoped>
 #app {
