@@ -223,7 +223,7 @@ export default {
     },
     handleEnterKey() {
       if (this.selectedTeams.length === 2) {
-        this.showMatchDatePicker = true;
+        confirmMatch();
       } else {
         alert('Please select exactly two teams before creating a match.');
       }
