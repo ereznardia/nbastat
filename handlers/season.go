@@ -6,6 +6,8 @@ import (
 	"log"
 	"net/http"
 	"skyhawk/db"
+	"strconv"
+	"strings"
 
 	"github.com/gorilla/mux"
 	_ "github.com/lib/pq"
@@ -73,6 +75,77 @@ func GetAverageStat(w http.ResponseWriter, r *http.Request) {
 			total += float64(getStatCount(pt.name)) * pt.value
 		}
 		avg = total / float64(matchCount)
+
+	} else if stat == "minutes" {
+		query := fmt.Sprintf(`
+			SELECT match_id, stat, minute
+			FROM matches_stats
+			WHERE %s = $1 AND EXTRACT(YEAR FROM match_date) = $2
+		`, idColumn)
+
+		rows, err := db.PG.Query(query, entityId, season)
+		if err != nil {
+			log.Printf("Error querying minutes: %v", err)
+			http.Error(w, "Error querying minutes", http.StatusInternalServerError)
+			return
+		}
+		defer rows.Close()
+
+		type event struct {
+			matchID int
+			stat    string
+			minute  string
+		}
+
+		eventsByMatch := make(map[int][]event)
+
+		for rows.Next() {
+			var ev event
+			if err := rows.Scan(&ev.matchID, &ev.stat, &ev.minute); err != nil {
+				log.Printf("Row scan error: %v", err)
+				continue
+			}
+			if ev.stat == "in" || ev.stat == "out" {
+				eventsByMatch[ev.matchID] = append(eventsByMatch[ev.matchID], ev)
+			}
+		}
+
+		totalSeconds := 0.0
+
+		for _, events := range eventsByMatch {
+			var matchSeconds float64
+			var stack []float64
+
+			for _, ev := range events {
+				parts := strings.Split(ev.minute, ".")
+				var min, sec int
+				if len(parts) == 1 {
+					min, _ = strconv.Atoi(parts[0]) // Only minutes, seconds default to 0
+					sec = 0
+				} else if len(parts) == 2 {
+					min, _ = strconv.Atoi(parts[0]) // Minutes
+					sec, _ = strconv.Atoi(parts[1]) // Seconds
+				} else {
+					continue
+				}
+				t := float64(min*60 + sec)
+
+				if ev.stat == "in" {
+					stack = append(stack, t)
+				} else if ev.stat == "out" && len(stack) > 0 {
+					inTime := stack[len(stack)-1]
+					stack = stack[:len(stack)-1]
+					if t > inTime {
+						matchSeconds += t - inTime
+					}
+				}
+			}
+
+			totalSeconds += matchSeconds
+		}
+
+		avg = totalSeconds / float64(matchCount) / 60.0
+
 	} else {
 		avg = float64(getStatCount(stat)) / float64(matchCount)
 	}
