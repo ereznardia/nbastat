@@ -295,7 +295,7 @@ export default {
         this.selectedMatchDate = '';
         this.selectedTeams = [];
       } catch (error) {
-        console.error('Error creating match:', error);
+        console.error('Error creating match', error);
       }
     },
     cancelMatch() {

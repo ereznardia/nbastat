@@ -139,7 +139,6 @@ func StartMatch(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	log.Printf("StartMatch: Match %d started with teams: %+v", matchID, teamPlayers)
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -376,7 +375,6 @@ func GetMatchStat(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		// Extract player ID from key: match:3:player:101:stats → "101"
 		parts := strings.Split(key, ":")
 		if len(parts) >= 4 {
 			playerID := parts[3]
@@ -605,7 +603,7 @@ func parseRequestedStats(query string) (map[string]bool, error) {
 
 func ClearAllMatchStats() error {
 	var cursor uint64
-	match := "match:*:player:*:stats"
+	match := "match:*"
 
 	for {
 		keys, nextCursor, err := db.Redis.Scan(db.Ctx, cursor, match, 100).Result()

@@ -278,7 +278,7 @@ export default {
           console.error('Failed to start match');
         }
       } catch (error) {
-        console.error('Error starting match:', error);
+        console.error('Error starting match', error);
       }
     },
     async endMatch(matchId) {
@@ -296,7 +296,7 @@ export default {
           console.error('Failed to end match');
         }
       } catch (error) {
-        console.error('Error ending match:', error);
+        console.error('Error ending match', error);
       }
     },
     // Prepare player data for starting the match
