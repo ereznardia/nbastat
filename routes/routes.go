@@ -18,8 +18,9 @@ func SetupRouter() *mux.Router {
 	r.HandleFunc("/api/players", handlers.GetPlayers).Methods("GET")     // Get all players
 	r.HandleFunc("/api/players", handlers.AddPlayers).Methods("POST")    // Add multiple players
 
-	r.HandleFunc("/api/player_team_history", handlers.GetPlayerTeamHistories).Methods("GET")  // Get player team history
-	r.HandleFunc("/api/player_team_history", handlers.AddPlayerTeamHistories).Methods("POST") // Add player team history
+	r.HandleFunc("/api/player_team_history", handlers.GetPlayerTeamHistories).Methods("GET")  // Get all players team history
+	r.HandleFunc("/api/player_team_history", handlers.AddPlayerTeamHistories).Methods("POST") // Add players team history
+	r.HandleFunc("/api/leave_team", handlers.LeaveTeam).Methods("POST")                       // Add players team history
 
 	r.HandleFunc("/api/team_active_players/{teamId}", handlers.GetTeamActivePlayers).Methods("GET") // Get team active players
 

@@ -39,6 +39,7 @@ func checkForTable() {
 		);
 	`)
 
+	// PG.Exec(fmt.Sprintf("DROP TABLE IF EXISTS %s;", "players"))
 	createTableIfNotExists("players", `
 			CREATE TABLE players (
 				player_id SERIAL PRIMARY KEY,  -- Auto-incrementing ID
@@ -47,6 +48,7 @@ func checkForTable() {
 			);
 		`)
 
+	// PG.Exec(fmt.Sprintf("DROP TABLE IF EXISTS %s;", "player_team_history"))
 	createTableIfNotExists("player_team_history", `
 		CREATE TABLE player_team_history (
 			history_id SERIAL PRIMARY KEY,  -- Auto-incrementing ID
@@ -64,12 +66,15 @@ func checkForTable() {
 		log.Fatalf("Error creating unique player-team-history index: %v", err)
 	}
 
+	// PG.Exec(fmt.Sprintf("DROP TABLE IF EXISTS %s;", "matches"))
 	createTableIfNotExists("matches", `
 			CREATE TABLE matches (
 				match_id SERIAL PRIMARY KEY,  -- Auto-incrementing ID
 				date DATE NOT NULL,
 				home_team INT REFERENCES teams(team_id) ON DELETE CASCADE,
-				away_team INT REFERENCES teams(team_id) ON DELETE CASCADE
+				away_team INT REFERENCES teams(team_id) ON DELETE CASCADE,
+				home_score INT,
+				away_score INT
 			);
 		`)
 
@@ -80,12 +85,15 @@ func checkForTable() {
 		log.Fatalf("Error creating unique match index: %v", err)
 	}
 
+	// PG.Exec(fmt.Sprintf("DROP TABLE IF EXISTS %s;", "matches_stats"))
 	createTableIfNotExists("matches_stats", `
 			CREATE TABLE matches_stats (
 				match_id INT REFERENCES matches(match_id) ON DELETE CASCADE,
+				team_id INT REFERENCES teams(team_id) ON DELETE CASCADE,
 				player_id INT REFERENCES players(player_id) ON DELETE CASCADE,
 				minute REAL,
-				stat TEXT NOT NULL
+				stat TEXT NOT NULL,
+				match_date DATE NOT NULL
 			);
 		`)
 }

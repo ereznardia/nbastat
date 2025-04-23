@@ -3,7 +3,11 @@
     <!-- Unassigned Players Section -->
     <div class="unassigned-players">
       <h2>Players Without a Team</h2>
-      <div class="unassigned-list">
+      <div
+          class="unassigned-list"
+          @dragover.prevent
+          @drop="handleUnassignDrop"
+        >
         <span
           v-for="player in getPlayersWithoutTeam()"
           :key="player.player_id"
@@ -33,6 +37,8 @@
             v-for="player in getPlayersForTeam(team.team_id)"
             :key="player.player_id"
             class="player-box"
+            draggable="true"
+            @dragstart="draggedPlayer = player; dragSourceTeamId = team.team_id"
           >
             {{ player.first_name }} {{ player.last_name }} ({{ getStartDate(player.player_id, team.team_id) }})
           </div>
@@ -64,6 +70,18 @@
       </div>
     </div>
   </div>
+
+  <div v-if="showUnassignDatePicker" class="modal-overlay">
+  <div class="modal">
+    <h3>Select End Date</h3>
+    <input type="date" v-model="selectedUnassignDate" />
+    <div class="modal-buttons">
+      <button @click="confirmUnassign">Confirm</button>
+      <button @click="cancelUnassign">Cancel</button>
+    </div>
+  </div>
+</div>
+
 </template>
 
 <script>
@@ -82,7 +100,12 @@ export default {
       showMatchDatePicker: false,
       selectedTeamPlayerHistoryDate: '',
       selectedMatchDate: '',
-      selectedTeams: []
+      selectedTeams: [],
+      dragSourceTeamId: null,
+      showUnassignDatePicker: false,
+      selectedUnassignDate: '',
+      unassignPlayer: null,
+      unassignTeamId: null,
     };
   },
   mounted() {
@@ -190,9 +213,47 @@ export default {
         this.selectedTeamPlayerHistoryDate = '';
         this.draggedPlayer = null;
         this.dropTeamId = null;
+        this.dragSourceTeamId = null;
         await this.fetchData();
       } catch (err) {
         console.error('Error assigning player to team:', err);
+      }
+    },
+    async confirmUnassign() {
+      if (!this.selectedUnassignDate || !this.unassignPlayer || !this.unassignTeamId) return;
+
+      let history = null;
+      for (const h of this.playerTeamHistory) {
+        if (
+          h.playerId === this.unassignPlayer.player_id &&
+          h.teamId === this.unassignTeamId &&
+          h.endDate?.Valid === false
+        ) {
+          history = h;
+          break;
+        }
+      }
+
+      if (!history) {
+        console.warn('No open assignment found to unassign.');
+        return;
+      }
+
+      try {
+        await axios.post(`http://localhost:8080/api/leave_team`, {
+          player_id: this.unassignPlayer.player_id,
+          team_id: this.unassignTeamId,
+          end_date: this.selectedUnassignDate
+        });
+
+        this.showUnassignDatePicker = false;
+        this.selectedUnassignDate = '';
+        this.unassignPlayer = null;
+        this.unassignTeamId = null;
+
+        await this.fetchData();
+      } catch (err) {
+        console.error('Error unassigning player:', err);
       }
     },
     cancelAssignment() {
@@ -200,6 +261,13 @@ export default {
       this.draggedPlayer = null;
       this.dropTeamId = null;
       this.selectedTeamPlayerHistoryDate = '';
+      this.dragSourceTeamId = null;
+    },
+    cancelUnassign() {
+      this.showUnassignDatePicker = false;
+      this.selectedUnassignDate = '';
+      this.unassignPlayer = null;
+      this.unassignTeamId = null;
     },
     handleEnterKey() {
       if (this.selectedTeams.length === 2) {
@@ -233,6 +301,16 @@ export default {
     cancelMatch() {
       this.showMatchDatePicker = false;
       this.selectedMatchDate = '';
+    },
+    handleUnassignDrop() {
+      if (!this.draggedPlayer || !this.dragSourceTeamId) return;
+
+      this.unassignPlayer = this.draggedPlayer;
+      this.unassignTeamId = this.dragSourceTeamId;
+      this.showUnassignDatePicker = true;
+
+      this.draggedPlayer = null;
+      this.dragSourceTeamId = null;
     }
   }
 };

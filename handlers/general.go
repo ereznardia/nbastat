@@ -225,6 +225,7 @@ func AddPlayers(w http.ResponseWriter, r *http.Request) {
 
 func GetPlayerTeamHistories(w http.ResponseWriter, r *http.Request) {
 	type PlayerHistory struct {
+		PlayerID       int          `json:"playerId"`
 		PlayerFullName string       `json:"playerFullName"`
 		TeamName       string       `json:"teamName"`
 		TeamID         int          `json:"teamId"`
@@ -234,7 +235,7 @@ func GetPlayerTeamHistories(w http.ResponseWriter, r *http.Request) {
 
 	// Query the database
 	rows, err := db.PG.Query(`
-		SELECT CONCAT(p.first_name, ' ', p.last_name), t.team_id, t.team_name, pth.start_date, pth.end_date
+		SELECT p.player_id, CONCAT(p.first_name, ' ', p.last_name), t.team_id, t.team_name, pth.start_date, pth.end_date
 		FROM player_team_history pth
 		JOIN teams t ON pth.team_id = t.team_id
 		JOIN players p ON pth.player_id = p.player_id
@@ -254,7 +255,7 @@ func GetPlayerTeamHistories(w http.ResponseWriter, r *http.Request) {
 		var history PlayerHistory
 
 		// Scan the data into the history struct
-		if err := rows.Scan(&history.PlayerFullName, &history.TeamID, &history.TeamName, &history.StartDate, &history.EndDate); err != nil {
+		if err := rows.Scan(&history.PlayerID, &history.PlayerFullName, &history.TeamID, &history.TeamName, &history.StartDate, &history.EndDate); err != nil {
 			http.Error(w, "Failed to scan row", http.StatusInternalServerError)
 			log.Printf("Error scanning row: %v", err)
 			return
@@ -319,6 +320,46 @@ func AddPlayerTeamHistories(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusOK)
+}
+
+func LeaveTeam(w http.ResponseWriter, r *http.Request) {
+	type LeaveTeamRequest struct {
+		PlayerID int    `json:"player_id"`
+		TeamID   int    `json:"team_id"`
+		EndDate  string `json:"end_date"`
+	}
+
+	var req LeaveTeamRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	// Validate date format (optional but recommended)
+	if _, err := time.Parse("2006-01-02", req.EndDate); err != nil {
+		http.Error(w, "Invalid date format. Use YYYY-MM-DD", http.StatusBadRequest)
+		return
+	}
+
+	query := `
+		UPDATE player_team_history
+		SET end_date = $1
+		WHERE player_id = $2 AND team_id = $3 AND end_date IS NULL
+	`
+	result, err := db.PG.Exec(query, req.EndDate, req.PlayerID, req.TeamID)
+	if err != nil {
+		http.Error(w, "Failed to update player history", http.StatusInternalServerError)
+		return
+	}
+
+	rowsAffected, _ := result.RowsAffected()
+	if rowsAffected == 0 {
+		http.Error(w, "No active record found for this player and team", http.StatusNotFound)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("Player successfully left the team"))
 }
 
 func GetTeamActivePlayers(w http.ResponseWriter, r *http.Request) {
