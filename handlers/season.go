@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"skyhawk/db"
@@ -18,6 +19,45 @@ func GetAverageStat(w http.ResponseWriter, r *http.Request) {
 	stat := vars["stat"]
 
 	var avg float64
+	var idColumn string
+
+	switch entity {
+	case "player":
+		idColumn = "player_id"
+	case "team":
+		idColumn = "team_id"
+	default:
+		http.Error(w, "Wrong entity type", http.StatusBadRequest)
+		log.Printf("Wrong entity type: %s", entity)
+		return
+	}
+
+	// Get total distinct matches played
+	matchCount := 0
+	err := db.PG.QueryRow(fmt.Sprintf(`
+		SELECT COUNT(DISTINCT match_id)
+		FROM matches_stats
+		WHERE %s = $1 AND EXTRACT(YEAR FROM match_date) = $2
+	`, idColumn), entityId, season).Scan(&matchCount)
+	if err != nil || matchCount == 0 {
+		http.Error(w, "No matches found or error", http.StatusInternalServerError)
+		log.Printf("Match count error: %v", err)
+		return
+	}
+
+	getStatCount := func(statName string) int {
+		var count int
+		err := db.PG.QueryRow(fmt.Sprintf(`
+			SELECT COUNT(*)
+			FROM matches_stats
+			WHERE %s = $1 AND stat = $2 AND EXTRACT(YEAR FROM match_date) = $3
+		`, idColumn), entityId, statName, season).Scan(&count)
+		if err != nil {
+			log.Printf("Stat count error for %s: %v", statName, err)
+			return 0
+		}
+		return count
+	}
 
 	if stat == "points" {
 		points := []struct {
@@ -28,66 +68,13 @@ func GetAverageStat(w http.ResponseWriter, r *http.Request) {
 			{"2pt", 2},
 			{"3pt", 3},
 		}
-
 		var total float64
 		for _, pt := range points {
-			var query string
-			if entity == "player" {
-				query = `
-					SELECT COUNT(*) * 1.0 / COUNT(DISTINCT match_id) AS avg
-					FROM matches_stats
-					WHERE player_id = $1 AND stat = $2 AND EXTRACT(YEAR FROM match_date) = $3
-				`
-			} else if entity == "team" {
-				query = `
-					SELECT COUNT(*) * 1.0 / COUNT(DISTINCT match_id) AS avg
-					FROM matches_stats
-					WHERE team_id = $1 AND stat = $2 AND EXTRACT(YEAR FROM match_date) = $3
-				`
-			} else {
-				http.Error(w, "Wrong entity type", http.StatusBadRequest)
-				log.Printf("Wrong entity type: %s", entity)
-				return
-			}
-
-			var ptAvg float64
-			err := db.PG.QueryRow(query, entityId, pt.name, season).Scan(&ptAvg)
-			if err != nil {
-				log.Printf("Average stat query error for %s: %v", pt.name, err)
-			}
-
-			total += ptAvg * pt.value
+			total += float64(getStatCount(pt.name)) * pt.value
 		}
-
-		avg = total
+		avg = total / float64(matchCount)
 	} else {
-		var query string
-		if entity == "player" {
-			query = `
-				SELECT COUNT(*) * 1.0 / COUNT(DISTINCT match_id) AS avg
-				FROM matches_stats
-				WHERE player_id = $1 AND stat = $2 AND EXTRACT(YEAR FROM match_date) = $3
-			`
-		} else if entity == "team" {
-			query = `
-				SELECT COUNT(*) * 1.0 / COUNT(DISTINCT match_id) AS avg
-				FROM matches_stats
-				WHERE team_id = $1 AND stat = $2 AND EXTRACT(YEAR FROM match_date) = $3
-			`
-		} else {
-			http.Error(w, "Wrong entity type", http.StatusBadRequest)
-			log.Printf("Wrong entity type: %s", entity)
-			return
-		}
-
-		err := db.PG.QueryRow(query, entityId, stat, season).Scan(&avg)
-		if err != nil {
-			http.Error(w, "Error calculating average stat", http.StatusInternalServerError)
-			log.Printf("Average stat query error: %v", err)
-			return
-		} else {
-			log.Printf("ok")
-		}
+		avg = float64(getStatCount(stat)) / float64(matchCount)
 	}
 
 	response := map[string]interface{}{
