@@ -37,6 +37,9 @@ func startRedisKeyLogger() {
 }
 
 func clearAllMatchStats() error {
+	db.PG.Exec(fmt.Sprintf("DROP TABLE IF EXISTS %s;", "matches_stats"))
+	db.PG.Exec(fmt.Sprintf("DROP TABLE IF EXISTS %s;", "matches"))
+
 	var cursor uint64
 	match := "match:*"
 

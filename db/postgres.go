@@ -31,10 +31,6 @@ func InitPostgres(dsn string) {
 }
 
 func checkForTables() {
-
-	// PG.Exec(fmt.Sprintf("DROP TABLE IF EXISTS %s;", "matches_stats"))
-	// PG.Exec(fmt.Sprintf("DROP TABLE IF EXISTS %s;", "matches"))
-
 	// Create Tables if they don't exist
 	createTableIfNotExists("teams", `
 		CREATE TABLE teams (
