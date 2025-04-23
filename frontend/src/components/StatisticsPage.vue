@@ -88,7 +88,7 @@ export default {
 
       // --- Player stats ---
       const playerFetches = this.players.map(async player => {
-        const url = `/api/${this.selectedYear}/player/${player.player_id}/${this.selectedStat}`;
+        const url = `/api/season/${this.selectedYear}/player/${player.player_id}/${this.selectedStat}`;
         try {
           const res = await fetch(url);
           const data = await res.json();
@@ -100,7 +100,7 @@ export default {
 
       // --- Team stats ---
       const teamFetches = this.teams.map(async team => {
-        const url = `/api/${this.selectedYear}/team/${team.team_id}/${this.selectedStat}`;
+        const url = `/api/season/${this.selectedYear}/team/${team.team_id}/${this.selectedStat}`;
         try {
           const res = await fetch(url);
           const data = await res.json();

@@ -32,7 +32,7 @@ func SetupRouter() *mux.Router {
 	//******************************//
 	// taken from 'matches_stats' (it will be populated in the end of the live match stat system, once match is over)
 
-	r.HandleFunc("/api/{season}/{entity}/{entityId}/{stat}", handlers.GetAverageStat).Methods("GET")
+	r.HandleFunc("/api/season/{season}/{entity}/{entityId}/{stat}", handlers.GetAverageStat).Methods("GET")
 
 	// Live match routes - Using Redis for real time performance
 	r.HandleFunc("/api/match_stat", handlers.AddMatchStat).Methods("POST")
