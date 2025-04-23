@@ -115,9 +115,9 @@ export default {
     async fetchData() {
       try {
         const [teamsRes, playersRes, historyRes] = await Promise.all([
-          axios.get('http://localhost:8080/api/teams'),
-          axios.get('http://localhost:8080/api/players'),
-          axios.get('http://localhost:8080/api/player_team_history')
+          axios.get('/api/teams'),
+          axios.get('/api/players'),
+          axios.get('/api/player_team_history')
         ]);
 
         this.teams = teamsRes.data;
@@ -208,7 +208,7 @@ export default {
       };
 
       try {
-        await axios.post('http://localhost:8080/api/player_team_history', [payload]);
+        await axios.post('/api/player_team_history', [payload]);
         this.showTeamPlayerHistoryDatePicker = false;
         this.selectedTeamPlayerHistoryDate = '';
         this.draggedPlayer = null;
@@ -240,7 +240,7 @@ export default {
       }
 
       try {
-        await axios.post(`http://localhost:8080/api/leave_team`, {
+        await axios.post(`/api/leave_team`, {
           player_id: this.unassignPlayer.player_id,
           team_id: this.unassignTeamId,
           end_date: this.selectedUnassignDate
@@ -289,7 +289,7 @@ export default {
       
 
       try {
-        await axios.post('http://localhost:8080/api/matches', payload);
+        await axios.post('/api/matches', payload);
         alert('Match created successfully!');
         this.showMatchDatePicker = false;
         this.selectedMatchDate = '';

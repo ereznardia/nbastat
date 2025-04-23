@@ -1,19 +1,28 @@
-FROM golang:1.24.2-alpine
+# === Stage 1: Build frontend ===
+FROM node:20-alpine as frontend-builder
+
+WORKDIR /app
+COPY frontend/ .
+RUN npm install && npm run build
+
+# === Stage 2: Build Go backend and package everything ===
+FROM golang:1.24-alpine
 
 WORKDIR /app
 
-# Copy go.mod and go.sum files
-COPY go.mod ./
-COPY go.sum ./
+# Copy Vue build output into Go app's static directory
+COPY --from=frontend-builder /app/dist ./frontend/dist
 
-# Download dependencies
+# Copy Go source code
+COPY go.mod go.sum ./
 RUN go mod download
+COPY . .
 
-# Copy the rest of your app
-COPY . ./
+# Build Go app
+RUN go build -o server .
 
-# Build your app
-RUN go build -o app .
+# Expose port (optional)
+EXPOSE 8080
 
-# Run your app
-CMD ["./app"]
+# Run the server
+CMD ["./server"]
